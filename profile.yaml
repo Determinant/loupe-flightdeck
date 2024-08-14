@@ -1,0 +1,51 @@
+---
+- {}
+# page 1
+- left:
+    # left knob labels
+    - HDG
+    - ALT
+    - CRS
+  right:
+    # right knob labels
+    - text: FMS in
+      size: 20
+    - text: FMS out
+      size: 20
+    - BARO
+  keys:
+    # 12 touchable keys from left to right, top to bottom
+    - A
+    - B
+    - C
+    - D
+    - E
+    - F
+    - G
+    - H
+    - I
+    - J
+    - K
+    - L
+# page 2
+- left:
+    - A
+    - B
+    - C
+  right:
+    - X
+    - Y
+    - Z
+  keys:
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
