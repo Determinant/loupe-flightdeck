@@ -1,0 +1,1 @@
+ACTION=="add", KERNEL=="ttyACM[0-9]*", ATTRS{idVendor}=="1532", ATTRS{idProduct}=="0d06", MODE="0666"

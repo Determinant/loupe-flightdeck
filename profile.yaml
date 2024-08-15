@@ -9,12 +9,16 @@
         xplane_cmd: sim/GPS/g1000n1_fms_outer_up
       dec:
         xplane_cmd: sim/GPS/g1000n1_fms_outer_down
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_cursor
     - text: FMS in
       size: 20
       inc:
         xplane_cmd: sim/GPS/g1000n1_fms_inner_up
       dec:
         xplane_cmd: sim/GPS/g1000n1_fms_inner_down
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_cursor
     - text: BARO
       inc:
         xplane_cmd: sim/GPS/g1000n1_baro_up
@@ -25,15 +29,19 @@
     - text: FMS out
       size: 20
       inc:
-        xplane_cmd: sim/GPS/g1000n2_fms_outer_up
+        xplane_cmd: sim/GPS/g1000n3_fms_outer_up
       dec:
-        xplane_cmd: sim/GPS/g1000n2_fms_outer_down
+        xplane_cmd: sim/GPS/g1000n3_fms_outer_down
+      pressed:
+        xplane_cmd: sim/GPS/g1000n3_cursor
     - text: FMS in
       size: 20
       inc:
-        xplane_cmd: sim/GPS/g1000n2_fms_inner_up
+        xplane_cmd: sim/GPS/g1000n3_fms_inner_up
       dec:
-        xplane_cmd: sim/GPS/g1000n2_fms_inner_down
+        xplane_cmd: sim/GPS/g1000n3_fms_inner_down
+      pressed:
+        xplane_cmd: sim/GPS/g1000n3_cursor
     - ''
   keys:
     # 12 touchable keys from left to right, top to bottom
@@ -45,10 +53,10 @@
         xplane_cmd: sim/GPS/g1000n1_menu
     - text: Direct
       pressed:
-        xplane_cmd: sim/GPS/g1000n2_direct
+        xplane_cmd: sim/GPS/g1000n3_direct
     - text: MENU
       pressed:
-        xplane_cmd: sim/GPS/g1000n2_menu
+        xplane_cmd: sim/GPS/g1000n3_menu
     - text: FPL
       pressed:
         xplane_cmd: sim/GPS/g1000n1_fpl
@@ -57,10 +65,10 @@
         xplane_cmd: sim/GPS/g1000n1_proc
     - text: FPL
       pressed:
-        xplane_cmd: sim/GPS/g1000n2_fpl
+        xplane_cmd: sim/GPS/g1000n3_fpl
     - text: PROC
       pressed:
-        xplane_cmd: sim/GPS/g1000n2_proc
+        xplane_cmd: sim/GPS/g1000n3_proc
     - text: CLR
       pressed:
         xplane_cmd: sim/GPS/g1000n1_clr
@@ -69,10 +77,10 @@
         xplane_cmd: sim/GPS/g1000n1_ent
     - text: CLR
       pressed:
-        xplane_cmd: sim/GPS/g1000n2_clr
+        xplane_cmd: sim/GPS/g1000n3_clr
     - text: ENT
       pressed:
-        xplane_cmd: sim/GPS/g1000n2_ent
+        xplane_cmd: sim/GPS/g1000n3_ent
 
 # page 2
 - left:
@@ -186,15 +194,19 @@
     - ''
     - text: COM1 M
       size: 16
+      pressed:
+        xplane_cmd: sim/audio_panel/transmit_audio_com1
     - text: COM1
       pressed:
-        xplane_cmd: sim/GPS/monitor_audio_com1
+        xplane_cmd: sim/audio_panel/monitor_audio_com1
     - ''
     - ''
     - text: COM2 M
       size: 16
+      pressed:
+        xplane_cmd: sim/audio_panel/transmit_audio_com2
     - text: COM2
       pressed:
-        xplane_cmd: sim/GPS/monitor_audio_com2
+        xplane_cmd: sim/audio_panel/monitor_audio_com2
     - ''
     - ''
