@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { registerFont } from 'canvas';
 
 registerFont('./ocr-a-ext.ttf', { family: 'ocr' });
@@ -6,25 +7,48 @@ import { discover } from 'loupedeck'
 
 import { readFile } from 'fs/promises';
 import { parse } from 'yaml'
+import { sendCommand } from './xplane.mjs';
+import { isNumberObject } from 'util/types';
 
 const pages = parse(await readFile("./profile.yaml", "utf8"));
 
+// state of the controller
+let currentPage;
+let pressed = new Set();
+let highlighted = new Set();
+
 // Detects and opens first connected device
 const device = await discover()
+
+const isNumber = (x) => { return !isNaN(x); }
 
 const isObject = (obj) => {
     return obj != null && obj.constructor.name === "Object"
 };
 
+const doAction = (labeled, type) => {
+    if (!isObject(labeled)) {
+        return;
+    }
+    let actionSpec = labeled[type];
+    if (actionSpec === undefined) {
+        return;
+    }
+    if (actionSpec.hasOwnProperty('xplane_cmd')) {
+        sendCommand(actionSpec.xplane_cmd);
+    }
+};
+
 const rectifyLabel = (label) => {
     let text;
-    let font;
+    let font = "22px ocr";
     if (isObject(label)) {
         text = label.text;
-        font = `${label.size}px ocr`;
+        if (label.hasOwnProperty('size')) {
+            font = `${label.size}px ocr`;
+        }
     } else {
         text = label.toString();
-        font = "24px ocr";
     }
     return { text, font }
 }
@@ -95,10 +119,6 @@ const loadPage = (page) => {
     }
 };
 
-let currentPage;
-let pressed = new Set();
-let highlighted = new Set();
-
 // Observe connect events
 device.on('connect', () => {
     console.info('Connection successful!')
@@ -108,12 +128,32 @@ device.on('connect', () => {
 
 // React to button presses
 device.on('down', ({ id }) => {
-    console.info(`switch to page: ${id}`)
-    if (id == 0) {
-        return
+    if (isNumber(id)) {
+        console.info(`switch to page: ${id}`)
+        if (id == 0) {
+            return
+        }
+        currentPage = id;
+        loadPage(pages[currentPage]);
+    } else {
+        const { left, right, keys } = pages[currentPage] || {};
+        if (!left) {
+            return
+        }
+        let pos = {"T": 0, "C": 1, "B": 2}[id.substring(4, 5)];
+        let side = {"L": ['left', left], "R": ['right', right]}[id.substring(5, 6)];
+        let mask = [false, false, false];
+        mask[pos] = true;
+        drawSideKnobs(side[0], side[1], mask);
+        if (!highlighted.has(id)) {
+            highlighted.add(id);
+            setTimeout(() => {
+                drawSideKnobs(side[0], side[1], [false, false, false]);
+                highlighted.delete(id);
+            }, 200);
+        }
+        doAction(side[1][pos], 'pressed');
     }
-    currentPage = id;
-    loadPage(pages[currentPage]);
 })
 
 // React to knob turns
@@ -134,6 +174,7 @@ device.on('rotate', ({ id, delta }) => {
             highlighted.delete(id);
         }, 200);
     }
+    doAction(side[1][pos], delta > 0 ? 'inc' : 'dec');
 })
 
 const clearStaleButton = (touches) => {
@@ -153,7 +194,9 @@ device.on('touchstart', ({ changedTouches, touches }) => {
         return
     }
     pressed.add(target.key);
-    drawKey(target.key, pages[currentPage].keys[target.key], true);
+    const key = pages[currentPage].keys[target.key];
+    drawKey(target.key, key, true);
+    doAction(key, 'pressed');
     //device.vibrate()
 })
 

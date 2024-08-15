@@ -3,49 +3,198 @@
 # page 1
 - left:
     # left knob labels
-    - HDG
-    - ALT
-    - CRS
-  right:
-    # right knob labels
-    - text: FMS in
-      size: 20
     - text: FMS out
       size: 20
-    - BARO
+      inc:
+        xplane_cmd: sim/GPS/g1000n1_fms_outer_up
+      dec:
+        xplane_cmd: sim/GPS/g1000n1_fms_outer_down
+    - text: FMS in
+      size: 20
+      inc:
+        xplane_cmd: sim/GPS/g1000n1_fms_inner_up
+      dec:
+        xplane_cmd: sim/GPS/g1000n1_fms_inner_down
+    - text: BARO
+      inc:
+        xplane_cmd: sim/GPS/g1000n1_baro_up
+      dec:
+        xplane_cmd: sim/GPS/g1000n1_baro_down
+  right:
+    # right knob labels
+    - text: FMS out
+      size: 20
+      inc:
+        xplane_cmd: sim/GPS/g1000n2_fms_outer_up
+      dec:
+        xplane_cmd: sim/GPS/g1000n2_fms_outer_down
+    - text: FMS in
+      size: 20
+      inc:
+        xplane_cmd: sim/GPS/g1000n2_fms_inner_up
+      dec:
+        xplane_cmd: sim/GPS/g1000n2_fms_inner_down
+    - ''
   keys:
     # 12 touchable keys from left to right, top to bottom
-    - A
-    - B
-    - C
-    - D
-    - E
-    - F
-    - G
-    - H
-    - I
-    - J
-    - K
-    - L
+    - text: -D->
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_direct
+    - text: MENU
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_menu
+    - text: Direct
+      pressed:
+        xplane_cmd: sim/GPS/g1000n2_direct
+    - text: MENU
+      pressed:
+        xplane_cmd: sim/GPS/g1000n2_menu
+    - text: FPL
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_fpl
+    - text: PROC
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_proc
+    - text: FPL
+      pressed:
+        xplane_cmd: sim/GPS/g1000n2_fpl
+    - text: PROC
+      pressed:
+        xplane_cmd: sim/GPS/g1000n2_proc
+    - text: CLR
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_clr
+    - text: ENT
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_ent
+    - text: CLR
+      pressed:
+        xplane_cmd: sim/GPS/g1000n2_clr
+    - text: ENT
+      pressed:
+        xplane_cmd: sim/GPS/g1000n2_ent
+
 # page 2
 - left:
-    - A
-    - B
-    - C
+    - text: HDG
+      inc:
+        xplane_cmd: sim/GPS/g1000n1_hdg_up
+      dec:
+        xplane_cmd: sim/GPS/g1000n1_hdg_down
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_hdg_sync
+    - text: ALT
+      inc:
+        xplane_cmd: sim/GPS/g1000n1_alt_inner_up
+      dec:
+        xplane_cmd: sim/GPS/g1000n1_alt_inner_down
+    - text: CRS
+      inc:
+        xplane_cmd: sim/GPS/g1000n1_crs_up
+      dec:
+        xplane_cmd: sim/GPS/g1000n1_crs_down
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_crs_sync
+
   right:
-    - X
-    - Y
-    - Z
+    - ''
+    - ''
+    - ''
   keys:
-    - 1
-    - 2
-    - 3
-    - 4
-    - 5
-    - 6
-    - 7
-    - 8
-    - 9
-    - 10
-    - 11
-    - 12
+    - text: AP
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_ap
+    - text: FD
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_fd
+    - text: HDG
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_hdg
+    - text: ALT
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_alt
+    - text: NAV
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_nav
+    - text: VNV
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_vnv
+    - text: APR
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_apr
+    - text: BC
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_bc
+    - text: VS
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_vs
+    - text: UP
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_nose_up
+    - text: FLC
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_flc
+    - text: DN
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_nose_down
+
+# page 3
+- left:
+    - text: COM in
+      size: 20
+      inc:
+        xplane_cmd: sim/GPS/g1000n1_com_inner_up
+      dec:
+        xplane_cmd: sim/GPS/g1000n1_com_inner_down
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_com12
+    - text: COM out
+      size: 20
+      inc:
+        xplane_cmd: sim/GPS/g1000n1_com_outer_up
+      dec:
+        xplane_cmd: sim/GPS/g1000n1_com_outer_down
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_com12
+    - ''
+  right:
+    - text: NAV in
+      size: 20
+      inc:
+        xplane_cmd: sim/GPS/g1000n1_nav_inner_up
+      dec:
+        xplane_cmd: sim/GPS/g1000n1_nav_inner_down
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_nav12
+    - text: NAV out
+      size: 20
+      inc:
+        xplane_cmd: sim/GPS/g1000n1_nav_outer_up
+      dec:
+        xplane_cmd: sim/GPS/g1000n1_nav_outer_down
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_nav12
+    - ''
+  keys:
+    - text: <-COM
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_com_ff
+    - text: <-NAV
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_nav_ff
+    - ''
+    - ''
+    - text: COM1 M
+      size: 16
+    - text: COM1
+      pressed:
+        xplane_cmd: sim/GPS/monitor_audio_com1
+    - ''
+    - ''
+    - text: COM2 M
+      size: 16
+    - text: COM2
+      pressed:
+        xplane_cmd: sim/GPS/monitor_audio_com2
+    - ''
+    - ''
