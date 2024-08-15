@@ -1,6 +1,26 @@
 ---
 # for xplane_cmd, refer to /Resources/plugins/Commands.txt under your X-Plane installation
-- default: 1
+- left:
+    - text: Thr.
+    - text: Prop
+    - text: Mix.
+  keys:
+    -
+    -
+    -
+    - text: Flap
+      text2: UP
+    -
+    -
+    -
+    - text: Flap
+      text2: T/O
+    -
+    -
+    -
+    - text: Flap
+      text2: LDG
+
 # page 1
 - left:
     # left knob labels
@@ -195,8 +215,8 @@
         xplane_cmd: sim/GPS/g1000n1_nav_ff
     - ''
     - ''
-    - text: COM1 M
-      size: 16
+    - text: COM1
+      text2: Mic
       pressed:
         xplane_cmd: sim/audio_panel/transmit_audio_com1
     - text: COM1
@@ -204,8 +224,8 @@
         xplane_cmd: sim/audio_panel/monitor_audio_com1
     - ''
     - ''
-    - text: COM2 M
-      size: 16
+    - text: COM2
+      text2: Mic
       pressed:
         xplane_cmd: sim/audio_panel/transmit_audio_com2
     - text: COM2

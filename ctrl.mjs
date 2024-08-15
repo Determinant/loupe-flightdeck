@@ -2,17 +2,19 @@
 
 import { registerFont } from "canvas";
 
-registerFont("./ocr-a-ext.ttf", { family: "ocr" });
+//registerFont("./ocr-a-ext.ttf", { family: "OCR A Extended" });
 
 import { discover, HAPTIC } from "loupedeck";
 import { readFile } from "fs/promises";
 import { parse } from "yaml";
 import { sendCommand } from "./xplane.mjs";
 
+const labelFont = "OCR A Extended";
+const labelSize = 22;
 const pages = parse(await readFile("./profile.yaml", "utf8"));
 
 // state of the controller
-let currentPage;
+let currentPage = pages[0].hasOwnProperty("default") ? pages[0].default : 1;
 let pressed = new Set();
 let highlighted = new Set();
 
@@ -27,7 +29,7 @@ const isObject = (obj) => {
     return obj != null && obj.constructor.name === "Object";
 };
 
-const takeAction = (labeled, type) => {
+const takeAction = (labeled, type, haptics) => {
     if (!isObject(labeled)) {
         return;
     }
@@ -38,43 +40,86 @@ const takeAction = (labeled, type) => {
     if (actionSpec.hasOwnProperty("xplane_cmd")) {
         sendCommand(actionSpec.xplane_cmd);
     }
+    if (haptics) {
+        device.vibrate(HAPTIC.REV_FASTEST);
+    }
+};
+
+const getKeyInfo = (i) => {
+    if (!pages[currentPage].hasOwnProperty("keys")) {
+        return null;
+    }
+    const keys = pages[currentPage].keys;
+    if (Array.isArray(keys) && i < keys.length) {
+        return keys[i];
+    }
+    return null;
 };
 
 const rectifyLabel = (label) => {
     let text;
-    let font = "22px ocr";
+    let text2 = null;
+    let font2 = null;
+    let size = labelSize;
     if (isObject(label)) {
         text = label.text;
         if (label.hasOwnProperty("size")) {
-            font = `${label.size}px ocr`;
+            size = label.size;
+        }
+        if (label.hasOwnProperty("text2")) {
+            text2 = label.text2;
+            font2 = `${size * 0.9}px '${labelFont}'`;
         }
     } else {
         text = label.toString();
     }
-    return { text, font };
+    let font = `${size}px '${labelFont}'`;
+    return { text, text2, font, font2 };
 };
 
 const drawKey = (key, label, down) => {
     device.drawKey(key, (c) => {
-        const { text, font } = rectifyLabel(label);
         const padding = 10;
         const bg = down ? "white" : "black";
         const fg = down ? "black" : "white";
         const w = c.canvas.width;
         const h = c.canvas.height;
+
+        // draw background
         c.fillStyle = bg;
         c.fillRect(0, 0, w, h);
         c.fillStyle = fg;
         c.lineWidth = 2;
         c.strokeStyle = fg;
         c.strokeRect(padding, padding, w - padding * 2, h - padding * 2);
-        c.font = font;
-        const { width, actualBoundingBoxAscent, actualBoundingBoxDescent } =
-            c.measureText(text);
-        const x_axis = (w - width) / 2;
-        const y_axis =
-            h / 2 + (actualBoundingBoxAscent - actualBoundingBoxDescent) / 2;
-        c.fillText(text, x_axis, y_axis);
+
+        if (label) {
+            const { text, text2, font, font2 } = rectifyLabel(label);
+            // draw the label
+            c.font = font;
+            const m1 = c.measureText(text);
+            const x1 = (w - m1.width) / 2;
+            if (text2 != null) {
+                const m2 = c.measureText(text2);
+                const h1 =
+                    m1.actualBoundingBoxAscent - m1.actualBoundingBoxDescent;
+                const h2 =
+                    m2.actualBoundingBoxAscent - m2.actualBoundingBoxDescent;
+                const sep = h1;
+                const y1 = h / 2 + h1 / 2 - sep;
+                const x2 = (w - m2.width) / 2;
+                const y2 = y1 + h1 / 2 + sep + h2 / 2;
+                c.fillText(text, x1, y1);
+                c.font = font2;
+                c.fillText(text2, x2, y2);
+            } else {
+                const y1 =
+                    h / 2 +
+                    (m1.actualBoundingBoxAscent - m1.actualBoundingBoxDescent) /
+                        2;
+                c.fillText(text, x1, y1);
+            }
+        }
     });
 };
 
@@ -106,18 +151,23 @@ const drawSideKnobs = (side, labels, highlight) => {
                 w - x_padding * 2,
                 h - y_padding * 2,
             );
-            const { text, font } = rectifyLabel(labels[i]);
-            c.font = font;
-            const { width, actualBoundingBoxAscent, actualBoundingBoxDescent } =
-                c.measureText(text);
-            const x_axis = (h - width) / 2;
-            const y_axis =
-                w / 2 +
-                (actualBoundingBoxAscent - actualBoundingBoxDescent) / 2;
-            c.rotate((90 * Math.PI) / 180);
-            c.fillStyle = hl ? 'black' : 'white';
-            c.fillText(text, x_axis + y_offset, -(w - y_axis));
-            c.resetTransform();
+            if (labels && labels.length > i) {
+                const { text, font } = rectifyLabel(labels[i]);
+                c.font = font;
+                const {
+                    width,
+                    actualBoundingBoxAscent,
+                    actualBoundingBoxDescent,
+                } = c.measureText(text);
+                const x_axis = (h - width) / 2;
+                const y_axis =
+                    w / 2 +
+                    (actualBoundingBoxAscent - actualBoundingBoxDescent) / 2;
+                c.rotate((90 * Math.PI) / 180);
+                c.fillStyle = hl ? "black" : "white";
+                c.fillText(text, x_axis + y_offset, -(w - y_axis));
+                c.resetTransform();
+            }
         }
     });
 };
@@ -130,14 +180,17 @@ const loadPage = (page) => {
     drawSideKnobs("left", left);
     drawSideKnobs("right", right);
     for (let i = 0; i < 12; i++) {
-        drawKey(i, keys[i], false);
+        drawKey(
+            i,
+            Array.isArray(keys) && keys.length > i ? keys[i] : null,
+            false,
+        );
     }
 };
 
 // Observe connect events
 device.on("connect", async () => {
     console.info("connected");
-    currentPage = pages[0].hasOwnProperty('default') ? pages[0].default : 1;
     for (let i = 0; i < pages.length; i++) {
         const color = pages[i].hasOwnProperty("color")
             ? pages[i].color
@@ -148,12 +201,12 @@ device.on("connect", async () => {
 });
 
 const handleKnobEvent = (id) => {
-    const { left, right, keys } = pages[currentPage] || {};
-    if (!left) {
-        return;
-    }
+    const { left, right } = pages[currentPage] || {};
     let pos = { T: 0, C: 1, B: 2 }[id.substring(4, 5)];
     let side = { L: ["left", left], R: ["right", right] }[id.substring(5, 6)];
+    if ((side[0] == "left" && !left) || (side[0] == "right" && !right)) {
+        return;
+    }
     let mask = [false, false, false];
     mask[pos] = true;
     drawSideKnobs(side[0], side[1], mask);
@@ -170,30 +223,33 @@ const handleKnobEvent = (id) => {
 // React to button presses
 device.on("down", ({ id }) => {
     if (isNumber(id)) {
-        console.info(`switch to page: ${id}`);
-        if (id == 0) {
+        if (id >= pages.length) {
             return;
         }
+        console.info(`switch to page: ${id}`);
         currentPage = id;
         loadPage(pages[currentPage]);
     } else {
-        takeAction(handleKnobEvent(id), "pressed");
+        takeAction(handleKnobEvent(id), "pressed", false);
     }
 });
 
 // React to knob turns
 device.on("rotate", ({ id, delta }) => {
-    takeAction(handleKnobEvent(id), delta > 0 ? "inc" : "dec");
+    takeAction(handleKnobEvent(id), delta > 0 ? "inc" : "dec", false);
 });
 
 const clearStaleButton = (touches) => {
     const s = new Set(
         touches.map((o) => o.target.key).filter((k) => k !== undefined),
     );
-    for (const key of pressed.keys()) {
-        if (!s.has(key)) {
-            drawKey(key, pages[currentPage].keys[key], false);
-            pressed.delete(key);
+    for (const k of pressed.keys()) {
+        if (!s.has(k)) {
+            const key = getKeyInfo(k);
+            if (key) {
+                drawKey(k, key, false);
+            }
+            pressed.delete(k);
         }
     }
 };
@@ -205,10 +261,11 @@ device.on("touchstart", ({ changedTouches, touches }) => {
         return;
     }
     pressed.add(target.key);
-    const key = pages[currentPage].keys[target.key];
-    drawKey(target.key, key, true);
-    takeAction(key, "pressed");
-    device.vibrate(HAPTIC.REV_FASTEST);
+    const key = getKeyInfo(target.key);
+    if (key) {
+        drawKey(target.key, key, true);
+        takeAction(key, "pressed", true);
+    }
 });
 
 device.on("touchmove", ({ changedTouches, touches }) => {
@@ -222,7 +279,10 @@ device.on("touchend", ({ changedTouches, touches }) => {
         return;
     }
     pressed.delete(target.key);
-    drawKey(target.key, pages[currentPage].keys[target.key], false);
+    const key = getKeyInfo(target.key);
+    if (key) {
+        drawKey(target.key, key, false);
+    }
 });
 
 process.on("SIGINT", () => {
