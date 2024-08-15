@@ -1,8 +1,8 @@
-import dgram from 'node:dgram';
+import dgram from "node:dgram";
 
 const xplaneAddr = "localhost";
 const xplanePort = 49000;
-const socket = dgram.createSocket('udp4');
+const socket = dgram.createSocket("udp4");
 
 //socket.on('message', (msg, rinfo) => {
 //    console.log(msg, rinfo)
@@ -10,7 +10,7 @@ const socket = dgram.createSocket('udp4');
 //
 //socket.bind(10080);
 
-const subscribeDataRef = async (dataRef) => {
+export const subscribeDataRef = async (dataRef) => {
     //const dataRef = "sim/flightmodel/position/indicated_airspeed";
     let buffer = Buffer.alloc(4 + 1 + 4 * 2 + 400);
     let off = buffer.write("RREF");
@@ -21,8 +21,7 @@ const subscribeDataRef = async (dataRef) => {
     off = buffer.writeUInt8(0, off); // null terminated
     console.log(Array.from(buffer));
     await socket.send(buffer, 0, buffer.length, xplanePort, xplaneAddr);
-}
-
+};
 
 export const sendCommand = async (cmd) => {
     let buffer = Buffer.alloc(4 + 1 + cmd.length + 1);
@@ -30,7 +29,7 @@ export const sendCommand = async (cmd) => {
     off = buffer.writeUInt8(0, off); // null terminated
     off += buffer.write(cmd, off); // command
     off = buffer.writeUInt8(0, off); // null terminated
-    console.info(`sent command: ${cmd}`)
+    console.info(`x-plane cmd: ${cmd}`);
     await socket.send(buffer, 0, buffer.length, xplanePort, xplaneAddr);
 };
 

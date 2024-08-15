@@ -1,5 +1,6 @@
 ---
-- {}
+# for xplane_cmd, refer to /Resources/plugins/Commands.txt under your X-Plane installation
+- default: 1
 # page 1
 - left:
     # left knob labels
@@ -51,7 +52,7 @@
     - text: MENU
       pressed:
         xplane_cmd: sim/GPS/g1000n1_menu
-    - text: Direct
+    - text: -D->
       pressed:
         xplane_cmd: sim/GPS/g1000n3_direct
     - text: MENU
@@ -81,6 +82,7 @@
     - text: ENT
       pressed:
         xplane_cmd: sim/GPS/g1000n3_ent
+  color: 'yellow'
 
 # page 2
 - left:
@@ -145,6 +147,7 @@
     - text: DN
       pressed:
         xplane_cmd: sim/GPS/g1000n1_nose_down
+  color: '#1a62fd'
 
 # page 3
 - left:
@@ -210,3 +213,4 @@
         xplane_cmd: sim/audio_panel/monitor_audio_com2
     - ''
     - ''
+  color: 'white'
