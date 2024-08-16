@@ -2,24 +2,48 @@
 # for xplane_cmd, refer to /Resources/plugins/Commands.txt under your X-Plane installation
 - left:
     - text: Thr.
+      inc:
+        xplane_cmd: sim/engines/throttle_up
+      dec:
+        xplane_cmd: sim/engines/throttle_down
     - text: Prop
+      color_bg: '#0000ff'
     - text: Mix.
+      inc:
+        xplane_cmd: sim/engines/mixture_up
+      dec:
+        xplane_cmd: sim/engines/mixture_down
+      color_bg: '#ff0000'
   keys:
+    - display:
+        xplane_dataref: sim/cockpit2/engine/indicators/MPR_in_hg
+        min: 0
+        max: 3000
+        stops:
+          - color: 'green'
+            value_begin: 500
+            value_end: 2400
+          - color: 'yellow'
+            value_begin: 2400
+            value_end: 2700
+          - color: 'red'
+            value_begin: 2700
+            value_end: 3000
+    -
+    -
+    - text: Flap
+      text2: Up
     -
     -
     -
     - text: Flap
-      text2: UP
+      text2: Down
     -
     -
     -
-    - text: Flap
-      text2: T/O
-    -
-    -
-    -
-    - text: Flap
-      text2: LDG
+    - text: Brake
+      pressed:
+        xplane_cmd: sim/flight_controls/brakes_toggle_regular
 
 # page 1
 - left:

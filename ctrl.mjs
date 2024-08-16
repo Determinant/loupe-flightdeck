@@ -7,7 +7,7 @@ import { registerFont } from "canvas";
 import { discover, HAPTIC } from "loupedeck";
 import { readFile } from "fs/promises";
 import { parse } from "yaml";
-import { sendCommand } from "./xplane.mjs";
+import { subscribeDataRef, sendCommand } from "./xplane.mjs";
 
 const labelFont = "OCR A Extended";
 const labelSize = 22;
@@ -61,6 +61,8 @@ const rectifyLabel = (label) => {
     let text2 = null;
     let font2 = null;
     let size = labelSize;
+    let color_bg = null;
+    let color_fg = null;
     if (isObject(label)) {
         text = label.text;
         if (label.hasOwnProperty("size")) {
@@ -70,14 +72,25 @@ const rectifyLabel = (label) => {
             text2 = label.text2;
             font2 = `${size * 0.9}px '${labelFont}'`;
         }
+        if (label.hasOwnProperty("color_bg")) {
+            color_bg = label.color_bg;
+        }
+        if (label.hasOwnProperty("color_fg")) {
+            color_fg = label.color_fg;
+        }
     } else {
         text = label.toString();
     }
     let font = `${size}px '${labelFont}'`;
-    return { text, text2, font, font2 };
+    return { text, text2, font, font2, color_bg, color_fg };
 };
 
 const drawKey = (key, label, down) => {
+    if (label && label.hasOwnProperty("display")) {
+        // not an input, but a display gauge
+        return;
+    }
+
     device.drawKey(key, (c) => {
         const padding = 10;
         const bg = down ? "white" : "black";
@@ -152,7 +165,18 @@ const drawSideKnobs = (side, labels, highlight) => {
                 h - y_padding * 2,
             );
             if (labels && labels.length > i) {
-                const { text, font } = rectifyLabel(labels[i]);
+                const { text, font, color_bg, color_fg } = rectifyLabel(
+                    labels[i],
+                );
+                if (color_bg) {
+                    c.fillStyle = color_bg;
+                    c.fillRect(
+                        x_padding + 2,
+                        y_padding + y_offset + 2,
+                        w - x_padding * 2 - 2,
+                        h - y_padding * 2 - 2,
+                    );
+                }
                 c.font = font;
                 const {
                     width,
@@ -172,6 +196,74 @@ const drawSideKnobs = (side, labels, highlight) => {
     });
 };
 
+const drawGauge = (key, label, value) => {
+    device.drawKey(key, (c) => {
+        const display = label.display;
+        const padding = 10;
+        const bg = "black";
+        const fg = "white";
+        const w = c.canvas.width;
+        const h = c.canvas.height;
+
+        const min = display.min;
+        const max = display.max;
+        const stops = display.stops;
+
+        if (isNaN(value)) {
+            value = 0;
+        }
+        let reading = (value - min) / max;
+        if (isNaN(reading)) {
+            reading = 0;
+        }
+
+        const text = value.toString();
+
+        // draw background
+        c.fillStyle = bg;
+        c.fillRect(0, 0, w, h);
+        c.strokeStyle = fg;
+        c.lineWidth = 1;
+        const x0 = w / 2;
+        const y0 = h / 2 + 5;
+        const outer = 40;
+        const width = 5;
+        const inner = outer - width;
+        for (let i = 0; i < stops.length; i++) {
+            const theta0 =
+                Math.PI * (1 + (stops[i].value_begin - min) / max) + 0.05;
+            const theta1 = Math.PI * (1 + (stops[i].value_end - min) / max);
+
+            c.beginPath();
+            c.lineWidth = width;
+            c.strokeStyle = stops[i].color;
+            c.arc(x0, y0, outer - width / 2, theta0, theta1);
+            c.stroke();
+
+            c.beginPath();
+            c.lineWidth = 2;
+            const cos = Math.cos(theta1);
+            const sin = Math.sin(theta1);
+            c.moveTo(x0 + cos * (inner - 2), y0 + sin * (inner - 2));
+            c.lineTo(x0 + cos * (outer + 2), y0 + sin * (outer + 2));
+            c.stroke();
+        }
+        c.strokeStyle = fg;
+        c.lineWidth = 2;
+        c.beginPath();
+        c.moveTo(x0, y0);
+        const theta = Math.PI * (1 + reading);
+        c.lineTo(x0 + Math.cos(theta) * inner, y0 + Math.sin(theta) * inner);
+        c.stroke();
+
+        const size = display.font ? display.font : labelSize;
+        c.font = `${size * 0.9}px '${labelFont}'`;
+        c.fillStyle = fg;
+        const m = c.measureText(text);
+        c.fillText(text, (w - m.width) / 2, h / 2 + 25);
+    });
+};
+
 const loadPage = (page) => {
     const { left, right, keys } = page || {};
     if (!left) {
@@ -180,11 +272,14 @@ const loadPage = (page) => {
     drawSideKnobs("left", left);
     drawSideKnobs("right", right);
     for (let i = 0; i < 12; i++) {
-        drawKey(
-            i,
-            Array.isArray(keys) && keys.length > i ? keys[i] : null,
-            false,
-        );
+        const key = Array.isArray(keys) && keys.length > i ? keys[i] : null;
+        drawKey(i, key, false);
+        if (key && key.hasOwnProperty("display")) {
+            drawGauge(i, key, NaN);
+            if (key.display.hasOwnProperty("xplane_dataref")) {
+                subscribeDataRef(key.display.xplane_dataref);
+            }
+        }
     }
 };
 
