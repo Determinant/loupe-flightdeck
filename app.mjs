@@ -7,11 +7,12 @@ import { registerFont } from "canvas";
 import { discover, HAPTIC } from "loupedeck";
 import { readFile } from "fs/promises";
 import { parse } from "yaml";
-import { subscribeDataRef, sendCommand } from "./xplane.mjs";
+import { XPlane } from "./xplane.mjs";
 
 const labelFont = "OCR A Extended";
 const labelSize = 22;
 const pages = parse(await readFile("./profile.yaml", "utf8"));
+const xplane = new XPlane();
 
 // state of the controller
 let currentPage = pages[0].hasOwnProperty("default") ? pages[0].default : 1;
@@ -38,7 +39,7 @@ const takeAction = (labeled, type, haptics) => {
         return;
     }
     if (actionSpec.hasOwnProperty("xplane_cmd")) {
-        sendCommand(actionSpec.xplane_cmd);
+        xplane.sendCommand(actionSpec.xplane_cmd);
     }
     if (haptics) {
         device.vibrate(HAPTIC.REV_FASTEST);
@@ -107,31 +108,7 @@ const drawKey = (key, label, down) => {
         c.strokeRect(padding, padding, w - padding * 2, h - padding * 2);
 
         if (label) {
-            const { text, text2, font, font2 } = rectifyLabel(label);
-            // draw the label
-            c.font = font;
-            const m1 = c.measureText(text);
-            const x1 = (w - m1.width) / 2;
-            if (text2 != null) {
-                const m2 = c.measureText(text2);
-                const h1 =
-                    m1.actualBoundingBoxAscent - m1.actualBoundingBoxDescent;
-                const h2 =
-                    m2.actualBoundingBoxAscent - m2.actualBoundingBoxDescent;
-                const sep = h1;
-                const y1 = h / 2 + h1 / 2 - sep;
-                const x2 = (w - m2.width) / 2;
-                const y2 = y1 + h1 / 2 + sep + h2 / 2;
-                c.fillText(text, x1, y1);
-                c.font = font2;
-                c.fillText(text2, x2, y2);
-            } else {
-                const y1 =
-                    h / 2 +
-                    (m1.actualBoundingBoxAscent - m1.actualBoundingBoxDescent) /
-                        2;
-                c.fillText(text, x1, y1);
-            }
+            drawDoubleLineText(c, label);
         }
     });
 };
@@ -164,7 +141,7 @@ const drawSideKnobs = (side, labels, highlight) => {
                 w - x_padding * 2,
                 h - y_padding * 2,
             );
-            if (labels && labels.length > i) {
+            if (labels && labels.length > i && labels[i]) {
                 const { text, font, color_bg, color_fg } = rectifyLabel(
                     labels[i],
                 );
@@ -196,71 +173,147 @@ const drawSideKnobs = (side, labels, highlight) => {
     });
 };
 
-const drawGauge = (key, label, value) => {
-    device.drawKey(key, (c) => {
-        const display = label.display;
-        const padding = 10;
-        const bg = "black";
-        const fg = "white";
-        const w = c.canvas.width;
-        const h = c.canvas.height;
+const drawDoubleLineText = (c, spec) => {
+    const { text, text2, font, font2 } = rectifyLabel(spec);
+    const w = c.canvas.width;
+    const h = c.canvas.height;
 
-        const min = display.min;
-        const max = display.max;
-        const stops = display.stops;
+    c.font = font;
+    const m1 = c.measureText(text);
+    const x1 = (w - m1.width) / 2;
+    if (text2 != null) {
+        const m2 = c.measureText(text2);
+        const h1 = m1.actualBoundingBoxAscent - m1.actualBoundingBoxDescent;
+        const h2 = m2.actualBoundingBoxAscent - m2.actualBoundingBoxDescent;
+        const sep = h1;
+        const y1 = h / 2 + h1 / 2 - sep;
+        const x2 = (w - m2.width) / 2;
+        const y2 = y1 + h1 / 2 + sep + h2 / 2;
+        c.fillText(text, x1, y1);
+        c.font = font2;
+        c.fillText(text2, x2, y2);
+    } else {
+        const y1 =
+            h / 2 +
+            (m1.actualBoundingBoxAscent - m1.actualBoundingBoxDescent) / 2;
+        c.fillText(text, x1, y1);
+    }
+};
 
-        if (isNaN(value)) {
-            value = 0;
-        }
-        let reading = (value - min) / max;
-        if (isNaN(reading)) {
-            reading = 0;
-        }
+const formatDisplayText = (display, value) => {
+    if (isNaN(value)) {
+        return "X";
+    }
+    if (display.formatter) {
+        return Function(
+            "$value",
+            `"use strict"; return(\`${display.formatter}\`);`,
+        )(value);
+    } else {
+        return value
+            .toFixed(display.decimals ? display.decimals : 0)
+            .toString();
+    }
+};
 
-        const text = value.toString();
+const drawTextGauge = (c, display, value) => {
+    const bg = "black";
+    const fg = "white";
+    const w = c.canvas.width;
+    const h = c.canvas.height;
 
-        // draw background
-        c.fillStyle = bg;
-        c.fillRect(0, 0, w, h);
-        c.strokeStyle = fg;
-        c.lineWidth = 1;
-        const x0 = w / 2;
-        const y0 = h / 2 + 5;
-        const outer = 40;
-        const width = 5;
-        const inner = outer - width;
-        for (let i = 0; i < stops.length; i++) {
-            const theta0 =
-                Math.PI * (1 + (stops[i].value_begin - min) / max) + 0.05;
-            const theta1 = Math.PI * (1 + (stops[i].value_end - min) / max);
+    const text = formatDisplayText(display, value);
+    const m = c.measureText(text);
 
-            c.beginPath();
-            c.lineWidth = width;
-            c.strokeStyle = stops[i].color;
-            c.arc(x0, y0, outer - width / 2, theta0, theta1);
-            c.stroke();
+    // draw background
+    c.fillStyle = bg;
+    c.fillRect(0, 0, w, h);
+    c.fillStyle = fg;
+    c.strokeStyle = fg;
+    c.lineWidth = 1;
 
-            c.beginPath();
-            c.lineWidth = 2;
-            const cos = Math.cos(theta1);
-            const sin = Math.sin(theta1);
-            c.moveTo(x0 + cos * (inner - 2), y0 + sin * (inner - 2));
-            c.lineTo(x0 + cos * (outer + 2), y0 + sin * (outer + 2));
-            c.stroke();
-        }
-        c.strokeStyle = fg;
-        c.lineWidth = 2;
+    drawDoubleLineText(c, {
+        text,
+        text2: display.tag,
+    });
+};
+
+const drawMeterGauge = (c, display, value) => {
+    const bg = "black";
+    const fg = "white";
+    const w = c.canvas.width;
+    const h = c.canvas.height;
+
+    const { min, max, stops } = display || {};
+
+    if (min == null) {
+        return;
+    }
+
+    let reading = (value - min) / (max - min);
+    if (isNaN(reading)) {
+        reading = min;
+    }
+
+    const text = formatDisplayText(display, value);
+
+    // draw background
+    c.fillStyle = bg;
+    c.fillRect(0, 0, w, h);
+    c.strokeStyle = fg;
+    c.lineWidth = 1;
+    const x0 = w / 2;
+    const y0 = h / 2 + 5;
+    const outer = 40;
+    const width = 5;
+    const inner = outer - width;
+    for (let i = 0; i < stops.length; i++) {
+        const theta0 =
+            Math.PI * (1 + (stops[i].value_begin - min) / (max - min)) + 0.05;
+        const theta1 = Math.PI * (1 + (stops[i].value_end - min) / (max - min));
+
         c.beginPath();
-        c.moveTo(x0, y0);
-        const theta = Math.PI * (1 + reading);
-        c.lineTo(x0 + Math.cos(theta) * inner, y0 + Math.sin(theta) * inner);
+        c.lineWidth = width;
+        c.strokeStyle = stops[i].color;
+        c.arc(x0, y0, outer - width / 2, theta0, theta1);
         c.stroke();
 
-        const size = display.font ? display.font : labelSize;
-        c.font = `${size * 0.9}px '${labelFont}'`;
-        c.fillStyle = fg;
-        const m = c.measureText(text);
-        c.fillText(text, (w - m.width) / 2, h / 2 + 25);
+        c.beginPath();
+        c.lineWidth = 2;
+        const cos = Math.cos(theta1);
+        const sin = Math.sin(theta1);
+        c.moveTo(x0 + cos * (inner - 2), y0 + sin * (inner - 2));
+        c.lineTo(x0 + cos * (outer + 2), y0 + sin * (outer + 2));
+        c.stroke();
+    }
+    c.strokeStyle = fg;
+    c.lineWidth = 2;
+    c.beginPath();
+    c.moveTo(x0, y0);
+    const theta = Math.PI * (1 + reading);
+    c.lineTo(x0 + Math.cos(theta) * inner, y0 + Math.sin(theta) * inner);
+    c.stroke();
+
+    const size = display.font ? display.font : labelSize;
+    c.font = `${size * 0.9}px '${labelFont}'`;
+    c.fillStyle = fg;
+    const m = c.measureText(text);
+    c.fillText(text, (w - m.width) / 2, h / 2 + 25);
+};
+
+const drawGauge = (key, label, value) => {
+    const types = {
+        meter: drawMeterGauge,
+        text: drawTextGauge,
+    };
+    device.drawKey(key, (c) => {
+        const display = label.display;
+        if (!display.hasOwnProperty("type")) {
+            return;
+        }
+        if (types[display.type]) {
+            types[display.type](c, display, value);
+        }
     });
 };
 
@@ -276,9 +329,6 @@ const loadPage = (page) => {
         drawKey(i, key, false);
         if (key && key.hasOwnProperty("display")) {
             drawGauge(i, key, NaN);
-            if (key.display.hasOwnProperty("xplane_dataref")) {
-                subscribeDataRef(key.display.xplane_dataref);
-            }
         }
     }
 };
@@ -287,10 +337,29 @@ const loadPage = (page) => {
 device.on("connect", async () => {
     console.info("connected");
     for (let i = 0; i < pages.length; i++) {
-        const color = pages[i].hasOwnProperty("color")
-            ? pages[i].color
-            : "white";
-        await device.setButtonColor({ id: i, color: pages[i].color });
+        const page = pages[i];
+        const color = page.hasOwnProperty("color") ? pages[i].color : "white";
+        await device.setButtonColor({ id: i, color: page.color });
+        // subscribe the data feeds
+        const { keys } = page || {};
+        for (let j = 0; j < 12; j++) {
+            const key = Array.isArray(keys) && keys.length > j ? keys[j] : null;
+            if (
+                key &&
+                key.hasOwnProperty("display") &&
+                key.display.hasOwnProperty("xplane_dataref")
+            ) {
+                await xplane.subscribeDataRef(
+                    key.display.xplane_dataref,
+                    10,
+                    (v) => {
+                        if (currentPage == i) {
+                            drawGauge(j, key, v);
+                        }
+                    },
+                );
+            }
+        }
     }
     loadPage(pages[currentPage]);
 });

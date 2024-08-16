@@ -16,7 +16,18 @@
       color_bg: '#ff0000'
   keys:
     - display:
-        xplane_dataref: sim/cockpit2/engine/indicators/MPR_in_hg
+        type: meter
+        xplane_dataref: sim/cockpit2/engine/indicators/MPR_in_hg[0]
+        min: 10
+        max: 30
+        stops:
+          - color: 'green'
+            value_begin: 13
+            value_end: 30
+        decimals: 2
+    - display:
+        type: meter
+        xplane_dataref: sim/cockpit2/engine/indicators/engine_speed_rpm[0]
         min: 0
         max: 3000
         stops:
@@ -29,15 +40,39 @@
           - color: 'red'
             value_begin: 2700
             value_end: 3000
-    -
-    -
+    - display:
+        type: meter
+        xplane_dataref: sim/flightmodel/controls/flaprat
+        min: 0
+        max: 1
+        stops:
+          - color: 'gray'
+            value_begin: 0
+            value_end: 0.2
+          - color: 'gray'
+            value_begin: 0.4
+            value_end: 0.6
+          - color: 'gray'
+            value_begin: 0.8
+            value_end: 1
+        formatter: '${($value * 100).toFixed(0)}%'
     - text: Flap
       text2: Up
-    -
-    -
+      pressed:
+        xplane_cmd: sim/flight_controls/flaps_up
+    - display:
+        type: text
+        xplane_dataref: sim/cockpit2/gauges/indicators/airspeed_kts_pilot
+        tag: IAS
+    - display:
+        type: text
+        xplane_dataref: sim/cockpit2/gauges/indicators/altitude_ft_pilot
+        tag: ALT
     -
     - text: Flap
       text2: Down
+      pressed:
+        xplane_cmd: sim/flight_controls/flaps_down
     -
     -
     -
@@ -87,7 +122,7 @@
         xplane_cmd: sim/GPS/g1000n3_fms_inner_down
       pressed:
         xplane_cmd: sim/GPS/g1000n3_cursor
-    - ''
+    -
   keys:
     # 12 touchable keys from left to right, top to bottom
     - text: -D->
