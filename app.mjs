@@ -309,8 +309,8 @@ const drawGauge = (key, label, value) => {
     });
 };
 
-const loadPage = (page) => {
-    const { left, right, keys } = page || {};
+const loadPage = (page) => { // page is not null
+    const { left, right, keys } = page;
     drawSideKnobs("left", left);
     drawSideKnobs("right", right);
     for (let i = 0; i < 12; i++) {
@@ -326,25 +326,26 @@ const loadPage = (page) => {
 device.on("connect", async () => {
     console.info("connected");
     for (let i = 0; i < pages.length; i++) {
-        const page = pages[i];
+        const page = pages[i] || {};
+        const keys = page.keys;
         const color =
             isObject(page) && page.color != null ? page.color : "white";
         await device.setButtonColor({ id: i, color });
         // subscribe the data feeds
-        const { keys } = page || {};
         for (let j = 0; j < 12; j++) {
-            const key = Array.isArray(keys) && keys.length > j ? keys[j] : null;
+            const conf =
+                Array.isArray(keys) && keys.length > j ? keys[j] : null;
             if (
-                key &&
-                key.display != null &&
-                key.display.xplane_dataref != null
+                isObject(conf) &&
+                conf.display != null &&
+                conf.display.xplane_dataref != null
             ) {
                 await xplane.subscribeDataRef(
-                    key.display.xplane_dataref,
+                    conf.display.xplane_dataref,
                     10,
                     (v) => {
                         if (currentPage == i) {
-                            drawGauge(j, key, v);
+                            drawGauge(j, conf, v);
                         }
                     },
                 );
