@@ -1,5 +1,8 @@
 ---
 # for xplane_cmd, refer to /Resources/plugins/Commands.txt under your X-Plane installation
+# for xplane_dataref, refer to /Resources/plugins/DataRefs.txt
+#
+# Page 0
 - left:
     - text: Thr.
       inc:
@@ -8,6 +11,10 @@
         xplane_cmd: sim/engines/throttle_down
     - text: Prop
       color_bg: '#0000ff'
+      inc:
+        xplane_cmd: sim/engines/prop_up
+      dec:
+        xplane_cmd: sim/engines/prop_down
     - text: Mix.
       inc:
         xplane_cmd: sim/engines/mixture_up
@@ -80,7 +87,72 @@
       pressed:
         xplane_cmd: sim/flight_controls/brakes_toggle_regular
 
-# page 1
+# Page 1
+- left:
+    - text: HDG
+      inc:
+        xplane_cmd: sim/GPS/g1000n1_hdg_up
+      dec:
+        xplane_cmd: sim/GPS/g1000n1_hdg_down
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_hdg_sync
+    - text: ALT
+      inc:
+        xplane_cmd: sim/GPS/g1000n1_alt_inner_up
+      dec:
+        xplane_cmd: sim/GPS/g1000n1_alt_inner_down
+    - text: CRS
+      inc:
+        xplane_cmd: sim/GPS/g1000n1_crs_up
+      dec:
+        xplane_cmd: sim/GPS/g1000n1_crs_down
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_crs_sync
+
+  right:
+    - ''
+    - ''
+    - ''
+  keys:
+    - text: AP
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_ap
+    - text: FD
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_fd
+    - text: HDG
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_hdg
+    - text: ALT
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_alt
+    - text: NAV
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_nav
+    - text: VNV
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_vnv
+    - text: APR
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_apr
+    - text: BC
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_bc
+    - text: VS
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_vs
+    - text: UP
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_nose_up
+    - text: FLC
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_flc
+    - text: DN
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_nose_down
+  color: '#1a62fd'
+
+# Page 2
 - left:
     # left knob labels
     - text: FMS out
@@ -163,72 +235,7 @@
         xplane_cmd: sim/GPS/g1000n3_ent
   color: 'yellow'
 
-# page 2
-- left:
-    - text: HDG
-      inc:
-        xplane_cmd: sim/GPS/g1000n1_hdg_up
-      dec:
-        xplane_cmd: sim/GPS/g1000n1_hdg_down
-      pressed:
-        xplane_cmd: sim/GPS/g1000n1_hdg_sync
-    - text: ALT
-      inc:
-        xplane_cmd: sim/GPS/g1000n1_alt_inner_up
-      dec:
-        xplane_cmd: sim/GPS/g1000n1_alt_inner_down
-    - text: CRS
-      inc:
-        xplane_cmd: sim/GPS/g1000n1_crs_up
-      dec:
-        xplane_cmd: sim/GPS/g1000n1_crs_down
-      pressed:
-        xplane_cmd: sim/GPS/g1000n1_crs_sync
-
-  right:
-    - ''
-    - ''
-    - ''
-  keys:
-    - text: AP
-      pressed:
-        xplane_cmd: sim/GPS/g1000n1_ap
-    - text: FD
-      pressed:
-        xplane_cmd: sim/GPS/g1000n1_fd
-    - text: HDG
-      pressed:
-        xplane_cmd: sim/GPS/g1000n1_hdg
-    - text: ALT
-      pressed:
-        xplane_cmd: sim/GPS/g1000n1_alt
-    - text: NAV
-      pressed:
-        xplane_cmd: sim/GPS/g1000n1_nav
-    - text: VNV
-      pressed:
-        xplane_cmd: sim/GPS/g1000n1_vnv
-    - text: APR
-      pressed:
-        xplane_cmd: sim/GPS/g1000n1_apr
-    - text: BC
-      pressed:
-        xplane_cmd: sim/GPS/g1000n1_bc
-    - text: VS
-      pressed:
-        xplane_cmd: sim/GPS/g1000n1_vs
-    - text: UP
-      pressed:
-        xplane_cmd: sim/GPS/g1000n1_nose_up
-    - text: FLC
-      pressed:
-        xplane_cmd: sim/GPS/g1000n1_flc
-    - text: DN
-      pressed:
-        xplane_cmd: sim/GPS/g1000n1_nose_down
-  color: '#1a62fd'
-
-# page 3
+# Page 3
 - left:
     - text: COM in
       size: 20

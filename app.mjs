@@ -14,14 +14,6 @@ const labelSize = 22;
 const pages = parse(await readFile("./profile.yaml", "utf8"));
 const xplane = new XPlane();
 
-// state of the controller
-let currentPage = pages[0].hasOwnProperty("default") ? pages[0].default : 1;
-let pressed = new Set();
-let highlighted = new Set();
-
-// detects and opens first connected device
-const device = await discover();
-
 const isNumber = (x) => {
     return !isNaN(x);
 };
@@ -30,72 +22,70 @@ const isObject = (obj) => {
     return obj != null && obj.constructor.name === "Object";
 };
 
-const takeAction = (labeled, type, haptics) => {
-    if (!isObject(labeled)) {
-        return;
-    }
-    let actionSpec = labeled[type];
-    if (actionSpec === undefined) {
-        return;
-    }
-    if (actionSpec.hasOwnProperty("xplane_cmd")) {
-        xplane.sendCommand(actionSpec.xplane_cmd);
-    }
-    if (haptics) {
-        device.vibrate(HAPTIC.REV_FASTEST);
-    }
+// state of the controller
+let currentPage =
+    isObject(pages[0]) && pages[0].default != null ? pages[0].default : 0;
+let pressed = new Set();
+let highlighted = new Set();
+
+// detects and opens first connected device
+const device = await discover();
+
+const getCurrentPage = () => {
+    return pages[currentPage] || {};
 };
 
-const getKeyInfo = (i) => {
-    if (!pages[currentPage].hasOwnProperty("keys")) {
+const getKeyConf = (i) => {
+    const keys = getCurrentPage().keys;
+    if (keys == null) {
         return null;
     }
-    const keys = pages[currentPage].keys;
     if (Array.isArray(keys) && i < keys.length) {
         return keys[i];
     }
     return null;
 };
 
-const rectifyLabel = (label) => {
+const rectifyLabel = (conf) => {
+    // conf must be non-null
     let text;
     let text2 = null;
     let font2 = null;
     let size = labelSize;
     let color_bg = null;
     let color_fg = null;
-    if (isObject(label)) {
-        text = label.text;
-        if (label.hasOwnProperty("size")) {
-            size = label.size;
+    if (isObject(conf)) {
+        text = conf.text;
+        if (conf.size != null) {
+            size = conf.size;
         }
-        if (label.hasOwnProperty("text2")) {
-            text2 = label.text2;
+        if (conf.text2 != null) {
+            text2 = conf.text2;
             font2 = `${size * 0.9}px '${labelFont}'`;
         }
-        if (label.hasOwnProperty("color_bg")) {
-            color_bg = label.color_bg;
+        if (conf.color_bg != null) {
+            color_bg = conf.color_bg;
         }
-        if (label.hasOwnProperty("color_fg")) {
-            color_fg = label.color_fg;
+        if (conf.color_fg != null) {
+            color_fg = conf.color_fg;
         }
     } else {
-        text = label.toString();
+        text = conf.toString();
     }
     let font = `${size}px '${labelFont}'`;
     return { text, text2, font, font2, color_bg, color_fg };
 };
 
-const drawKey = (key, label, down) => {
-    if (label && label.hasOwnProperty("display")) {
+const drawKey = (id, conf, pressed) => {
+    if (conf && conf.display != null) {
         // not an input, but a display gauge
         return;
     }
 
-    device.drawKey(key, (c) => {
+    device.drawKey(id, (c) => {
         const padding = 10;
-        const bg = down ? "white" : "black";
-        const fg = down ? "black" : "white";
+        const bg = pressed ? "white" : "black";
+        const fg = pressed ? "black" : "white";
         const w = c.canvas.width;
         const h = c.canvas.height;
 
@@ -107,17 +97,17 @@ const drawKey = (key, label, down) => {
         c.strokeStyle = fg;
         c.strokeRect(padding, padding, w - padding * 2, h - padding * 2);
 
-        if (label) {
-            drawDoubleLineText(c, label);
+        if (conf != null) {
+            drawDoubleLineText(c, conf);
         }
+        // otherwise the empty key style is still drawn
     });
 };
 
-const drawSideKnobs = (side, labels, highlight) => {
+const drawSideKnobs = (side, confs, highlight) => {
     device.drawScreen(side, (c) => {
-        const light = pages[currentPage].hasOwnProperty("color")
-            ? pages[currentPage].color
-            : "white";
+        const page = getCurrentPage();
+        const light = page.color != null ? page.color : "white";
         if (!highlight) {
             highlight = [false, false, false];
         }
@@ -130,6 +120,7 @@ const drawSideKnobs = (side, labels, highlight) => {
             const fg = hl ? "black" : light;
             const w = c.canvas.width;
             const h = c.canvas.height / 3;
+            // draw background
             c.fillStyle = bg;
             c.fillRect(0, y_offset, w, h);
             c.fillStyle = fg;
@@ -141,9 +132,9 @@ const drawSideKnobs = (side, labels, highlight) => {
                 w - x_padding * 2,
                 h - y_padding * 2,
             );
-            if (labels && labels.length > i && labels[i]) {
+            if (Array.isArray(confs) && confs.length > i && confs[i] != null) {
                 const { text, font, color_bg, color_fg } = rectifyLabel(
-                    labels[i],
+                    confs[i],
                 );
                 if (color_bg) {
                     c.fillStyle = color_bg;
@@ -173,10 +164,11 @@ const drawSideKnobs = (side, labels, highlight) => {
     });
 };
 
-const drawDoubleLineText = (c, spec) => {
-    const { text, text2, font, font2 } = rectifyLabel(spec);
+const drawDoubleLineText = (c, conf) => {
     const w = c.canvas.width;
     const h = c.canvas.height;
+
+    const { text, text2, font, font2 } = rectifyLabel(conf);
 
     c.font = font;
     const m1 = c.measureText(text);
@@ -308,7 +300,7 @@ const drawGauge = (key, label, value) => {
     };
     device.drawKey(key, (c) => {
         const display = label.display;
-        if (!display.hasOwnProperty("type")) {
+        if (display.type == null) {
             return;
         }
         if (types[display.type]) {
@@ -319,16 +311,13 @@ const drawGauge = (key, label, value) => {
 
 const loadPage = (page) => {
     const { left, right, keys } = page || {};
-    if (!left) {
-        return;
-    }
     drawSideKnobs("left", left);
     drawSideKnobs("right", right);
     for (let i = 0; i < 12; i++) {
-        const key = Array.isArray(keys) && keys.length > i ? keys[i] : null;
-        drawKey(i, key, false);
-        if (key && key.hasOwnProperty("display")) {
-            drawGauge(i, key, NaN);
+        const conf = Array.isArray(keys) && keys.length > i ? keys[i] : null;
+        drawKey(i, conf, false);
+        if (isObject(conf) && conf.display != null) {
+            drawGauge(i, conf, NaN);
         }
     }
 };
@@ -338,16 +327,17 @@ device.on("connect", async () => {
     console.info("connected");
     for (let i = 0; i < pages.length; i++) {
         const page = pages[i];
-        const color = page.hasOwnProperty("color") ? pages[i].color : "white";
-        await device.setButtonColor({ id: i, color: page.color });
+        const color =
+            isObject(page) && page.color != null ? page.color : "white";
+        await device.setButtonColor({ id: i, color });
         // subscribe the data feeds
         const { keys } = page || {};
         for (let j = 0; j < 12; j++) {
             const key = Array.isArray(keys) && keys.length > j ? keys[j] : null;
             if (
                 key &&
-                key.hasOwnProperty("display") &&
-                key.display.hasOwnProperty("xplane_dataref")
+                key.display != null &&
+                key.display.xplane_dataref != null
             ) {
                 await xplane.subscribeDataRef(
                     key.display.xplane_dataref,
@@ -361,11 +351,11 @@ device.on("connect", async () => {
             }
         }
     }
-    loadPage(pages[currentPage]);
+    loadPage(getCurrentPage());
 });
 
 const handleKnobEvent = (id) => {
-    const { left, right } = pages[currentPage] || {};
+    const { left, right } = getCurrentPage();
     let pos = { T: 0, C: 1, B: 2 }[id.substring(4, 5)];
     let side = { L: ["left", left], R: ["right", right] }[id.substring(5, 6)];
     if ((side[0] == "left" && !left) || (side[0] == "right" && !right)) {
@@ -384,6 +374,22 @@ const handleKnobEvent = (id) => {
     return side[1][pos];
 };
 
+const takeAction = (labeled, type, haptics) => {
+    if (!isObject(labeled)) {
+        return;
+    }
+    let actionSpec = labeled[type];
+    if (actionSpec == null) {
+        return;
+    }
+    if (actionSpec.xplane_cmd != null) {
+        xplane.sendCommand(actionSpec.xplane_cmd);
+    }
+    if (haptics) {
+        device.vibrate(HAPTIC.REV_FASTEST);
+    }
+};
+
 // React to button presses
 device.on("down", ({ id }) => {
     if (isNumber(id)) {
@@ -392,7 +398,7 @@ device.on("down", ({ id }) => {
         }
         console.info(`switch to page: ${id}`);
         currentPage = id;
-        loadPage(pages[currentPage]);
+        loadPage(getCurrentPage());
     } else {
         takeAction(handleKnobEvent(id), "pressed", false);
     }
@@ -407,13 +413,13 @@ const clearStaleButton = (touches) => {
     const s = new Set(
         touches.map((o) => o.target.key).filter((k) => k !== undefined),
     );
-    for (const k of pressed.keys()) {
-        if (!s.has(k)) {
-            const key = getKeyInfo(k);
-            if (key) {
-                drawKey(k, key, false);
+    for (const id of pressed.keys()) {
+        if (!s.has(id)) {
+            const conf = getKeyConf(id);
+            if (conf != null) {
+                drawKey(id, conf, false);
             }
-            pressed.delete(k);
+            pressed.delete(id);
         }
     }
 };
@@ -425,7 +431,7 @@ device.on("touchstart", ({ changedTouches, touches }) => {
         return;
     }
     pressed.add(target.key);
-    const key = getKeyInfo(target.key);
+    const key = getKeyConf(target.key);
     if (key) {
         drawKey(target.key, key, true);
         takeAction(key, "pressed", true);
@@ -443,7 +449,7 @@ device.on("touchend", ({ changedTouches, touches }) => {
         return;
     }
     pressed.delete(target.key);
-    const key = getKeyInfo(target.key);
+    const key = getKeyConf(target.key);
     if (key) {
         drawKey(target.key, key, false);
     }
