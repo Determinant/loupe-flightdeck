@@ -86,13 +86,13 @@ const rectifyLabel = (conf) => {
     };
 };
 
-const drawKey = (id, conf, pressed) => {
+const drawKey = async (id, conf, pressed) => {
     if (conf && conf.display != null) {
         // not an input, but a display gauge
         return;
     }
 
-    device.drawKey(id, (c) => {
+    await device.drawKey(id, (c) => {
         const padding = 10;
         const bg = pressed ? "white" : "black";
         const fg = pressed ? "black" : "white";
@@ -114,8 +114,8 @@ const drawKey = (id, conf, pressed) => {
     });
 };
 
-const drawSideKnobs = (side, confs, highlight) => {
-    device.drawScreen(side, (c) => {
+const drawSideKnobs = async (side, confs, highlight) => {
+    await device.drawScreen(side, (c) => {
         const page = getCurrentPage();
         const light = page.color != null ? page.color : "white";
         if (!highlight) {
@@ -383,13 +383,13 @@ const drawMeterGauge = (c, display, values) => {
     c.fillText(text, (w - m.width) / 2, h / 2 + 25);
 };
 
-const drawGauge = (key, label, values) => {
+const drawGauge = async (key, label, values) => {
     const types = {
         meter: drawMeterGauge,
         text: drawTextGauge,
         attitude: drawAttitudeIndicator,
     };
-    device.drawKey(key, (c) => {
+    await device.drawKey(key, (c) => {
         const display = label.display;
         if (display.type == null) {
             return;
@@ -400,18 +400,20 @@ const drawGauge = (key, label, values) => {
     });
 };
 
-const loadPage = (page) => {
+const loadPage = async (page) => {
     // page is not null
     const { left, right, keys } = page;
-    drawSideKnobs("left", left);
-    drawSideKnobs("right", right);
+    let pms = [];
+    pms.push(drawSideKnobs("left", left));
+    pms.push(drawSideKnobs("right", right));
     for (let i = 0; i < 12; i++) {
         const conf = Array.isArray(keys) && keys.length > i ? keys[i] : null;
-        drawKey(i, conf, false);
+        pms.push(drawKey(i, conf, false));
         if (isObject(conf) && conf.display != null) {
             drawGauge(i, conf, NaN);
         }
     }
+    await Promise.all(pms);
 };
 
 // Observe connect events
@@ -443,10 +445,10 @@ device.on("connect", async () => {
                         await xplane.subscribeDataRef(
                             xplane_dataref,
                             10,
-                            (v) => {
+                            async (v) => {
                                 values[k] = v;
                                 if (currentPage == i) {
-                                    drawGauge(j, conf, values);
+                                    await drawGauge(j, conf, values);
                                 }
                             },
                         );
@@ -458,7 +460,7 @@ device.on("connect", async () => {
     loadPage(getCurrentPage());
 });
 
-const handleKnobEvent = (id) => {
+const handleKnobEvent = async (id) => {
     const { left, right } = getCurrentPage();
     let pos = { T: 0, C: 1, B: 2 }[id.substring(4, 5)];
     let side = { L: ["left", left], R: ["right", right] }[id.substring(5, 6)];
@@ -467,7 +469,7 @@ const handleKnobEvent = (id) => {
     }
     let mask = [false, false, false];
     mask[pos] = true;
-    drawSideKnobs(side[0], side[1], mask);
+    await drawSideKnobs(side[0], side[1], mask);
     if (!highlighted.has(id)) {
         highlighted.add(id);
         setTimeout(() => {
@@ -495,7 +497,7 @@ const takeAction = (labeled, type, haptics) => {
 };
 
 // React to button presses
-device.on("down", ({ id }) => {
+device.on("down", async ({ id }) => {
     if (isNumber(id)) {
         if (id >= pages.length) {
             return;
@@ -504,16 +506,16 @@ device.on("down", ({ id }) => {
         currentPage = id;
         loadPage(getCurrentPage());
     } else {
-        takeAction(handleKnobEvent(id), "pressed", false);
+        takeAction(await handleKnobEvent(id), "pressed", false);
     }
 });
 
 // React to knob turns
-device.on("rotate", ({ id, delta }) => {
-    takeAction(handleKnobEvent(id), delta > 0 ? "inc" : "dec", false);
+device.on("rotate", async ({ id, delta }) => {
+    takeAction(await handleKnobEvent(id), delta > 0 ? "inc" : "dec", false);
 });
 
-const clearStaleButton = (touches) => {
+const clearStaleButton = async (touches) => {
     const s = new Set(
         touches.map((o) => o.target.key).filter((k) => k !== undefined),
     );
@@ -521,14 +523,14 @@ const clearStaleButton = (touches) => {
         if (!s.has(id)) {
             const conf = getKeyConf(id);
             if (conf != null) {
-                drawKey(id, conf, false);
+                await drawKey(id, conf, false);
             }
             pressed.delete(id);
         }
     }
 };
 
-device.on("touchstart", ({ changedTouches, touches }) => {
+device.on("touchstart", async ({ changedTouches, touches }) => {
     clearStaleButton(changedTouches);
     const target = changedTouches[0].target;
     if (target.key === undefined) {
@@ -537,7 +539,7 @@ device.on("touchstart", ({ changedTouches, touches }) => {
     pressed.add(target.key);
     const key = getKeyConf(target.key);
     if (key) {
-        drawKey(target.key, key, true);
+        await drawKey(target.key, key, true);
         takeAction(key, "pressed", true);
     }
 });
@@ -546,7 +548,7 @@ device.on("touchmove", ({ changedTouches, touches }) => {
     clearStaleButton(changedTouches);
 });
 
-device.on("touchend", ({ changedTouches, touches }) => {
+device.on("touchend", async ({ changedTouches, touches }) => {
     clearStaleButton(changedTouches);
     const target = changedTouches[0].target;
     if (target.key === undefined) {
@@ -555,7 +557,7 @@ device.on("touchend", ({ changedTouches, touches }) => {
     pressed.delete(target.key);
     const key = getKeyConf(target.key);
     if (key) {
-        drawKey(target.key, key, false);
+        await drawKey(target.key, key, false);
     }
 });
 

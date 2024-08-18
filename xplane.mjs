@@ -6,7 +6,7 @@ export class XPlane {
         this.subscribed = [];
         this.xplaneAddr = xplaneAddr;
         this.xplanePort = xplanePort;
-        this.socket.on("message", (msg, rinfo) => {
+        this.socket.on("message", async (msg, rinfo) => {
             if (msg.subarray(0, 5).toString() != "RREF,") {
                 console.info("dropping unrelated message");
                 return;
@@ -24,7 +24,7 @@ export class XPlane {
                 }
                 const v = msg.readFloatLE(9 + i * 8);
                 //console.info(`${this.subscribed[idx].ref} = ${v}`);
-                this.subscribed[idx].handler(v);
+                await this.subscribed[idx].handler(v);
             }
         });
         this.socket.bind(0);
