@@ -1,9 +1,12 @@
-Loupedeck Control
------------------
+Loupe Flightdeck
+----------------
 
+- Only tested on `Razer Stream Controller`_ (which is an idential device to `Loupedeck Live`_, I bought it because it's cheaper).
 - Setup: ``npm install``
 - Run: ``./app.mjs``
 
+.. _Razer Stream Controller: https://www.amazon.com/Razer-Stream-Controller-All-One/dp/B0B5FV1BY6
+.. _Loupedeck Live: https://loupedeck.com/us/products/loupedeck-live/
 
 Demo
 ----
@@ -15,8 +18,16 @@ Demo
     <img src="https://raw.githubusercontent.com/Determinant/loupedeck-ctrl/main/figures/ap-page.jpg" width="70%">
     </div>
  
-Video: https://photos.app.goo.gl/1hAQ19DZQRo4RRr9A
 
-Profile is currently in ``profile.yaml``.
+Resources
+---------
 
-Linux permission issue: copy ``50-loupedeck.rules`` to be under ``/etc/udev/rules.d`` and then ``sudo udevadm control --reload-rules && sudo udevadm trigger``.
+- Only tested on Linux, please let me know if it also runs or doesn't run on macOS/Windows.
+- Currently only X-Plane is supported, to get data feed for the displayed
+  gauges, start the program *after* you launche X-Plane (so it will subscribe
+  the data properly). If you're interested in working on MSFS support, etc.,
+  please let me know.
+
+- Videos: https://photos.app.goo.gl/1hAQ19DZQRo4RRr9A
+- Profile is currently in ``profile.yaml``.
+- Linux permission issue: copy ``50-loupedeck.rules`` to be under ``/etc/udev/rules.d`` and then ``sudo udevadm control --reload-rules && sudo udevadm trigger``.

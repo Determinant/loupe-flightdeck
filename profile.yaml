@@ -99,6 +99,7 @@
         source:
           - xplane_dataref: sim/cockpit2/gauges/indicators/airspeed_kts_pilot
         tag: IAS
+        color_fg2: 'gray'
     - display:
         type: attitude
         source:
