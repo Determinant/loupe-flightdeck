@@ -1,6 +1,8 @@
 Loupe Flightdeck
 ----------------
 
+NOTICE: please ask me for permission before using the code for any commercial purpose.
+
 - Only tested on `Razer Stream Controller`_ (which is an idential device to `Loupedeck Live`_, I bought it because it's cheaper).
 - Setup: ``npm install``
 - Run: ``./app.mjs``
