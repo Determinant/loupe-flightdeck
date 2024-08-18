@@ -3,9 +3,9 @@ Loupe Flightdeck
 
 NOTICE: please ask me for permission before using the code for any commercial purpose.
 
-- Only tested on `Razer Stream Controller`_ (which is an idential device to `Loupedeck Live`_, I bought it because it's cheaper).
+- Only tested on `Razer Stream Controller`_ (which is an identical device to `Loupedeck Live`_, I bought it because it's cheaper).
 - Setup: ``npm install``
-- Run: ``./app.mjs`` (make sure you don't have other software using the same device, such as Loupedeck's official software running)
+- Run: ``./app.mjs`` or ``node app.mjs`` (make sure you don't have other software using the same device, such as Loupedeck's official software running)
 
 .. _Razer Stream Controller: https://www.amazon.com/Razer-Stream-Controller-All-One/dp/B0B5FV1BY6
 .. _Loupedeck Live: https://loupedeck.com/us/products/loupedeck-live/
@@ -25,8 +25,8 @@ Resources
 ---------
 
 - Only tested on Linux/Windows (run with CMD), please let me know if it also runs or doesn't run on macOS.
-- Currently only X-Plane is supported, to get data feed for the displayed
-  gauges, start the program *after* you launche X-Plane (so it will subscribe
+- Currently only X-Plane is supported. To get data feed for the displayed
+  gauges, start the program *after* you launch X-Plane (so it will subscribe
   the data properly). If you're interested in working on MSFS support, etc.,
   please let me know.
 
