@@ -11,8 +11,18 @@ import { XPlane } from "./xplane.mjs";
 
 const labelFont = "OCR A Extended";
 const labelSize = 22;
-const pages = parse(await readFile("./profile.yaml", "utf8"));
 const xplane = new XPlane();
+
+if (process.argv.length > 3) {
+    console.error("./app.mjs [profile YAML file]");
+}
+const profile_file = process.argv[2];
+const pages = parse(
+    await readFile(
+        profile_file ? profile_file : `${import.meta.dirname}/profile.yaml`,
+        "utf8",
+    ),
+);
 
 const isNumber = (x) => {
     return !isNaN(x);
@@ -29,7 +39,15 @@ let pressed = new Set();
 let highlighted = new Set();
 
 // detects and opens first connected device
-const device = await discover();
+let device;
+while (!device) {
+    try {
+        device = await discover();
+    } catch (e) {
+        console.error(`${e}. retry in 5 secs`);
+        await new Promise((res) => setTimeout(res, 5000));
+    }
+}
 
 const getCurrentPage = () => {
     return pages[currentPage] || {};
@@ -48,32 +66,26 @@ const getKeyConf = (i) => {
 
 const rectifyLabel = (conf) => {
     // conf must be non-null
-    let text;
-    let text2 = null;
-    let font2 = null;
-    let size = labelSize;
-    let color_bg = null;
-    let color_fg = null;
-    let color_bg2 = null;
-    let color_fg2 = null;
+    let text, text2, font, font2;
+    let color_bg, color_fg;
+    let color_bg2, color_fg2;
 
+    let size = labelSize;
     if (isObject(conf)) {
-        text = conf.text;
         if (conf.size != null) {
             size = conf.size;
         }
-        if (conf.text2 != null) {
-            text2 = conf.text2;
-            font2 = `${size * 0.9}px '${labelFont}'`;
-        }
+        text = conf.text;
+        text2 = conf.text2;
         color_bg = conf.color_bg;
         color_fg = conf.color_fg;
         color_bg2 = conf.color_bg2;
         color_fg2 = conf.color_fg2;
+        font2 = `${size * 0.9}px '${labelFont}'`;
     } else {
         text = conf.toString();
     }
-    let font = `${size}px '${labelFont}'`;
+    font = `${size}px '${labelFont}'`;
     return {
         text,
         text2,
@@ -246,9 +258,9 @@ const drawAttitudeIndicator = (c, display, values) => {
     c.rotate((-roll * Math.PI) / 180);
     c.translate(0, (pitch / 10) * longSep);
     c.fillStyle = "#0077b6";
-    c.fillRect(-0.75 * w, -0.75 * h, 1.5 * w, 0.75 * h);
+    c.fillRect(-w, -2 * h, 2 * w, 4 * h);
     c.fillStyle = "#99582a";
-    c.fillRect(-0.75 * w, 0, 1.5 * w, 0.75 * h);
+    c.fillRect(-w, 0, 2 * w, 4 * h);
     c.lineWidth = 1;
     c.strokeStyle = fg;
     c.beginPath();

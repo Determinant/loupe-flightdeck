@@ -5,7 +5,7 @@ NOTICE: please ask me for permission before using the code for any commercial pu
 
 - Only tested on `Razer Stream Controller`_ (which is an idential device to `Loupedeck Live`_, I bought it because it's cheaper).
 - Setup: ``npm install``
-- Run: ``./app.mjs``
+- Run: ``./app.mjs`` (make sure you don't have other software using the same device, such as Loupedeck's official software running)
 
 .. _Razer Stream Controller: https://www.amazon.com/Razer-Stream-Controller-All-One/dp/B0B5FV1BY6
 .. _Loupedeck Live: https://loupedeck.com/us/products/loupedeck-live/
@@ -24,7 +24,7 @@ Demo
 Resources
 ---------
 
-- Only tested on Linux, please let me know if it also runs or doesn't run on macOS/Windows.
+- Only tested on Linux/Windows (run with CMD), please let me know if it also runs or doesn't run on macOS.
 - Currently only X-Plane is supported, to get data feed for the displayed
   gauges, start the program *after* you launche X-Plane (so it will subscribe
   the data properly). If you're interested in working on MSFS support, etc.,
