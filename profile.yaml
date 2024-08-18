@@ -9,6 +9,8 @@
         xplane_cmd: sim/engines/throttle_up
       dec:
         xplane_cmd: sim/engines/throttle_down
+      pressed:
+        xplane_cmd: sim/engines/throttle_full
     - text: Prop
       color_bg: '#0000ff'
       inc:
@@ -20,21 +22,45 @@
         xplane_cmd: sim/engines/mixture_up
       dec:
         xplane_cmd: sim/engines/mixture_down
+      pressed:
+        xplane_cmd: sim/engines/mixture_max
       color_bg: '#ff0000'
+  right:
+    - text: HDG
+      inc:
+        xplane_cmd: sim/GPS/g1000n1_hdg_up
+      dec:
+        xplane_cmd: sim/GPS/g1000n1_hdg_down
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_hdg_sync
+    - text: ALT
+      inc:
+        xplane_cmd: sim/GPS/g1000n1_alt_inner_up
+      dec:
+        xplane_cmd: sim/GPS/g1000n1_alt_inner_down
+    - text: CRS
+      inc:
+        xplane_cmd: sim/GPS/g1000n1_crs_up
+      dec:
+        xplane_cmd: sim/GPS/g1000n1_crs_down
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_crs_sync
   keys:
     - display:
         type: meter
-        xplane_dataref: sim/cockpit2/engine/indicators/MPR_in_hg[0]
+        source:
+          - xplane_dataref: sim/cockpit2/engine/indicators/MPR_in_hg[0]
         min: 10
         max: 30
+        formatter: '${$value.toFixed(2)}'
         stops:
           - color: 'green'
             value_begin: 13
             value_end: 30
-        decimals: 2
     - display:
         type: meter
-        xplane_dataref: sim/cockpit2/engine/indicators/engine_speed_rpm[0]
+        source:
+          - xplane_dataref: sim/cockpit2/engine/indicators/engine_speed_rpm[0]
         min: 0
         max: 3000
         stops:
@@ -49,7 +75,8 @@
             value_end: 3000
     - display:
         type: meter
-        xplane_dataref: sim/flightmodel/controls/flaprat
+        source:
+          - xplane_dataref: sim/flightmodel/controls/flaprat
         min: 0
         max: 1
         stops:
@@ -69,20 +96,38 @@
         xplane_cmd: sim/flight_controls/flaps_up
     - display:
         type: text
-        xplane_dataref: sim/cockpit2/gauges/indicators/airspeed_kts_pilot
+        source:
+          - xplane_dataref: sim/cockpit2/gauges/indicators/airspeed_kts_pilot
         tag: IAS
     - display:
+        type: attitude
+        source:
+          - xplane_dataref: sim/cockpit/gyros/the_ind_ahars_pilot_deg # pitch
+          - xplane_dataref: sim/cockpit/gyros/phi_ind_ahars_pilot_deg # roll
+    - display:
         type: text
-        xplane_dataref: sim/cockpit2/gauges/indicators/altitude_ft_pilot
-        tag: ALT
-    -
+        source:
+          - xplane_dataref: sim/cockpit2/gauges/indicators/altitude_ft_pilot # alt
+          - xplane_dataref: sim/cockpit2/gauges/indicators/vvi_fpm_pilot # vs
     - text: Flap
       text2: Down
       pressed:
         xplane_cmd: sim/flight_controls/flaps_down
     -
-    -
-    -
+    - display:
+        type: text
+        source:
+          - xplane_dataref: sim/cockpit2/gauges/indicators/heading_AHARS_deg_mag_pilot
+          - xplane_dataref: sim/cockpit2/autopilot/heading_dial_deg_mag_pilot
+        formatter: '${$value.toFixed(0).padStart(3, "0")}'
+        color_fg2: '#1a62fd'
+    - display:
+        type: text
+        source:
+          - xplane_dataref: sim/cockpit/radios/gps_course_degtm
+        tag: CRS
+        formatter: '${$value.toFixed(0).padStart(3, "0")}'
+        color_fg2: 'magenta'
     - text: Brake
       pressed:
         xplane_cmd: sim/flight_controls/brakes_toggle_regular

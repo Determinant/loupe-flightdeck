@@ -54,6 +54,9 @@ const rectifyLabel = (conf) => {
     let size = labelSize;
     let color_bg = null;
     let color_fg = null;
+    let color_bg2 = null;
+    let color_fg2 = null;
+
     if (isObject(conf)) {
         text = conf.text;
         if (conf.size != null) {
@@ -63,17 +66,24 @@ const rectifyLabel = (conf) => {
             text2 = conf.text2;
             font2 = `${size * 0.9}px '${labelFont}'`;
         }
-        if (conf.color_bg != null) {
-            color_bg = conf.color_bg;
-        }
-        if (conf.color_fg != null) {
-            color_fg = conf.color_fg;
-        }
+        color_bg = conf.color_bg;
+        color_fg = conf.color_fg;
+        color_bg2 = conf.color_bg2;
+        color_fg2 = conf.color_fg2;
     } else {
         text = conf.toString();
     }
     let font = `${size}px '${labelFont}'`;
-    return { text, text2, font, font2, color_bg, color_fg };
+    return {
+        text,
+        text2,
+        font,
+        font2,
+        color_bg,
+        color_fg,
+        color_bg2,
+        color_fg2,
+    };
 };
 
 const drawKey = (id, conf, pressed) => {
@@ -168,7 +178,7 @@ const drawDoubleLineText = (c, conf) => {
     const w = c.canvas.width;
     const h = c.canvas.height;
 
-    const { text, text2, font, font2 } = rectifyLabel(conf);
+    const { text, text2, font, font2, color_fg2 } = rectifyLabel(conf);
 
     c.font = font;
     const m1 = c.measureText(text);
@@ -182,6 +192,10 @@ const drawDoubleLineText = (c, conf) => {
         const x2 = (w - m2.width) / 2;
         const y2 = y1 + h1 / 2 + sep + h2 / 2;
         c.fillText(text, x1, y1);
+
+        if (color_fg2 != null) {
+            c.fillStyle = color_fg2;
+        }
         c.font = font2;
         c.fillText(text2, x2, y2);
     } else {
@@ -192,29 +206,97 @@ const drawDoubleLineText = (c, conf) => {
     }
 };
 
-const formatDisplayText = (display, value) => {
+const formatDisplayText = (formatter, value) => {
     if (isNaN(value)) {
         return "X";
     }
-    if (display.formatter) {
+    if (formatter) {
         return Function(
             "$value",
-            `"use strict"; return(\`${display.formatter}\`);`,
+            `"use strict"; return(\`${formatter}\`);`,
         )(value);
     } else {
-        return value
-            .toFixed(display.decimals ? display.decimals : 0)
-            .toString();
+        return value.toFixed(0).toString();
     }
 };
 
-const drawTextGauge = (c, display, value) => {
+const drawAttitudeIndicator = (c, display, values) => {
+    const pitch = values[0];
+    const roll = values[1];
+    const raw = values[2];
     const bg = "black";
     const fg = "white";
     const w = c.canvas.width;
     const h = c.canvas.height;
 
-    const text = formatDisplayText(display, value);
+    // draw background
+    c.fillStyle = bg;
+    c.fillRect(0, 0, w, h);
+    c.fillStyle = fg;
+    c.strokeStyle = fg;
+
+    const x0 = w / 2;
+    const y0 = h / 2;
+    const longMark = [-10, 10];
+    const shortMark = [-5, 5];
+    const longSep = 18;
+    const shortSep = longSep / 2;
+
+    c.translate(x0, y0);
+    c.rotate((-roll * Math.PI) / 180);
+    c.translate(0, (pitch / 10) * longSep);
+    c.fillStyle = "#0077b6";
+    c.fillRect(-0.75 * w, -0.75 * h, 1.5 * w, 0.75 * h);
+    c.fillStyle = "#99582a";
+    c.fillRect(-0.75 * w, 0, 1.5 * w, 0.75 * h);
+    c.lineWidth = 1;
+    c.strokeStyle = fg;
+    c.beginPath();
+    c.moveTo(-0.75 * w, 0);
+    c.lineTo(0.75 * w, 0);
+
+    c.fillStyle = fg;
+    c.font = `10px ${labelFont}`;
+    const drawMark = (i) => {
+        const y = longSep * i;
+        const sign = i < 0 ? -1 : 1;
+        c.fillText(sign * i * 10, longMark[0] - 15, y + 3);
+        c.moveTo(longMark[0], y);
+        c.lineTo(longMark[1], y);
+        c.moveTo(shortMark[0], y - sign * shortSep);
+        c.lineTo(shortMark[1], y - sign * shortSep);
+    };
+    for (let i = -6; i <= 6; i++) {
+        if (i != 0) {
+            drawMark(i);
+        }
+    }
+    c.stroke();
+    c.resetTransform();
+
+    c.lineWidth = 2;
+    c.strokeStyle = "yellow";
+    c.beginPath();
+    c.moveTo(x0 - 30, y0);
+    c.lineTo(x0 - 10, y0);
+    c.lineTo(x0 - 10, y0 + 8);
+    c.stroke();
+
+    c.beginPath();
+    c.moveTo(x0 + 30, y0);
+    c.lineTo(x0 + 10, y0);
+    c.lineTo(x0 + 10, y0 + 8);
+    c.stroke();
+};
+
+const drawTextGauge = (c, display, values) => {
+    const value = values[0];
+    const bg = "black";
+    const fg = "white";
+    const w = c.canvas.width;
+    const h = c.canvas.height;
+
+    const text = formatDisplayText(display.formatter, value);
     const m = c.measureText(text);
 
     // draw background
@@ -226,11 +308,19 @@ const drawTextGauge = (c, display, value) => {
 
     drawDoubleLineText(c, {
         text,
-        text2: display.tag,
+        text2:
+            display.tag != null
+                ? display.tag
+                : formatDisplayText(
+                      display.formatter2 || display.formatter,
+                      values[1],
+                  ),
+        color_fg2: display.color_fg2,
     });
 };
 
-const drawMeterGauge = (c, display, value) => {
+const drawMeterGauge = (c, display, values) => {
+    const value = values[0];
     const bg = "black";
     const fg = "white";
     const w = c.canvas.width;
@@ -247,7 +337,7 @@ const drawMeterGauge = (c, display, value) => {
         reading = min;
     }
 
-    const text = formatDisplayText(display, value);
+    const text = formatDisplayText(display.formatter, value);
 
     // draw background
     c.fillStyle = bg;
@@ -293,10 +383,11 @@ const drawMeterGauge = (c, display, value) => {
     c.fillText(text, (w - m.width) / 2, h / 2 + 25);
 };
 
-const drawGauge = (key, label, value) => {
+const drawGauge = (key, label, values) => {
     const types = {
         meter: drawMeterGauge,
         text: drawTextGauge,
+        attitude: drawAttitudeIndicator,
     };
     device.drawKey(key, (c) => {
         const display = label.display;
@@ -304,12 +395,13 @@ const drawGauge = (key, label, value) => {
             return;
         }
         if (types[display.type]) {
-            types[display.type](c, display, value);
+            types[display.type](c, display, values);
         }
     });
 };
 
-const loadPage = (page) => { // page is not null
+const loadPage = (page) => {
+    // page is not null
     const { left, right, keys } = page;
     drawSideKnobs("left", left);
     drawSideKnobs("right", right);
@@ -338,17 +430,28 @@ device.on("connect", async () => {
             if (
                 isObject(conf) &&
                 conf.display != null &&
-                conf.display.xplane_dataref != null
+                Array.isArray(conf.display.source)
             ) {
-                await xplane.subscribeDataRef(
-                    conf.display.xplane_dataref,
-                    10,
-                    (v) => {
-                        if (currentPage == i) {
-                            drawGauge(j, conf, v);
-                        }
-                    },
-                );
+                let values = [];
+                for (let k = 0; k < conf.display.source.length; k++) {
+                    values.push(NaN);
+                }
+                for (let k = 0; k < conf.display.source.length; k++) {
+                    const xplane_dataref =
+                        conf.display.source[k].xplane_dataref;
+                    if (xplane_dataref != null) {
+                        await xplane.subscribeDataRef(
+                            xplane_dataref,
+                            10,
+                            (v) => {
+                                values[k] = v;
+                                if (currentPage == i) {
+                                    drawGauge(j, conf, values);
+                                }
+                            },
+                        );
+                    }
+                }
             }
         }
     }
@@ -456,8 +559,7 @@ device.on("touchend", ({ changedTouches, touches }) => {
     }
 });
 
-process.on("SIGINT", () => {
-    device.close().then(() => {
-        process.exit();
-    });
+process.on("SIGINT", async () => {
+    await device.close();
+    process.exit();
 });
