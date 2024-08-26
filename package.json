@@ -1,6 +1,6 @@
 {
   "name": "loupe-flightdeck",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Turn your stream deck into a flight deck!",
   "repository": {
     "type": "git",
@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "canvas": "^2.11.2",
-    "loupedeck": "^6.0.0",
+    "loupedeck": "^6.0.1",
     "yaml": "^2.5.0"
   },
   "bin": "./app.mjs"

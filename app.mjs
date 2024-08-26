@@ -575,5 +575,6 @@ device.on("touchend", async ({ changedTouches, touches }) => {
 
 process.on("SIGINT", async () => {
     await device.close();
+    await xplane.close();
     process.exit();
 });

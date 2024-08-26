@@ -25,10 +25,7 @@ Resources
 ---------
 
 - Only tested on Linux/Windows (run with CMD), please let me know if it also runs or doesn't run on macOS.
-- Currently only X-Plane is supported. To get data feed for the displayed
-  gauges, start the program *after* you launch X-Plane (so it will subscribe
-  the data properly). If you're interested in working on MSFS support, etc.,
-  please let me know.
+- Currently only X-Plane is supported. If you're interested in working on MSFS support, etc., please let me know.
 
 - Videos: https://photos.app.goo.gl/1hAQ19DZQRo4RRr9A
 - Profile is currently in ``profile.yaml``.
