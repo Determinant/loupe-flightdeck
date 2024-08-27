@@ -95,18 +95,16 @@
       pressed:
         xplane_cmd: sim/flight_controls/flaps_up
     - display:
-        type: text
+        type: ias
         source:
           - xplane_dataref: sim/cockpit2/gauges/indicators/airspeed_kts_pilot
-        tag: IAS
-        color_fg2: 'gray'
     - display:
         type: attitude
         source:
           - xplane_dataref: sim/cockpit/gyros/the_ind_ahars_pilot_deg # pitch
           - xplane_dataref: sim/cockpit/gyros/phi_ind_ahars_pilot_deg # roll
     - display:
-        type: text
+        type: alt
         source:
           - xplane_dataref: sim/cockpit2/gauges/indicators/altitude_ft_pilot # alt
           - xplane_dataref: sim/cockpit2/gauges/indicators/vvi_fpm_pilot # vs

@@ -395,11 +395,197 @@ const drawMeterGauge = (c, display, values) => {
     c.fillText(text, (w - m.width) / 2, h / 2 + 25);
 };
 
+const mechanicalStyleNumber = (value, lowDigitStep = 1) => {
+    const split = (x) => {
+        const int = Math.trunc(x);
+        const float = (x - int).toFixed(2);
+        return { int, float };
+    };
+
+    // first handle the lowest bundle of digits
+    const lowDigits = Math.trunc(Math.log10(lowDigitStep)) + 1;
+    const low10 = Math.pow(10, lowDigits);
+    const lowMax = (low10 - lowDigitStep) / lowDigitStep;
+    let t = split((value % low10) / lowDigitStep);
+    let digits = [t.int];
+    let scroll = [t.float];
+    // remove the lowest bundle of digits
+    let i = 0;
+    value /= low10;
+    while (true) {
+        t = split(value % 10);
+        if (
+            ((i > 0 && digits[i] == 9) || digits[i] == lowMax) &&
+            scroll[i] > 0
+        ) {
+            scroll.push(scroll[i]);
+        } else {
+            if (value < 1) {
+                break;
+            }
+            scroll.push(0);
+        }
+        digits.push(t.int);
+        i += 1;
+        value /= 10;
+    }
+    return { digits, scroll, low10, lowDigits };
+};
+
+const renderMechanicalDisplay = (
+    c,
+    w,
+    h,
+    value,
+    padding = 20,
+    right = true,
+    bigger_window_width = 2,
+    lowDigitStep = 1,
+) => {
+    const bg = "black";
+    const fg = "white";
+
+    c.save();
+    c.font = `${labelSize}px '${labelFont}'`;
+    const m = c.measureText("x");
+    const y0 =
+        h / 2 + (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2;
+    let digit_height =
+        (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) * 2;
+    let digit_width =
+        (m.actualBoundingBoxRight - m.actualBoundingBoxLeft) * 1.2;
+    const sign = right ? -1 : 1;
+    let x = (right ? w : 0) + sign * padding;
+
+    c.strokeStyle = bg;
+    const narrow_window_y = y0 - digit_height * 0.95;
+    const narrow_window_h = digit_height * 1.25;
+    const bigger_window_x =
+        x + sign * (bigger_window_width + (right ? -1 : 0)) * digit_width;
+    const bigger_window_y = y0 - digit_height * 1.5;
+    const bigger_window_w = bigger_window_width * digit_width;
+    const bigger_window_h = digit_height * 2.25;
+    c.fillStyle = bg;
+    c.fillRect(0, narrow_window_y, w, narrow_window_h);
+    c.fillRect(
+        bigger_window_x,
+        bigger_window_y,
+        bigger_window_w,
+        bigger_window_h,
+    );
+
+    c.rect(0, narrow_window_y, w, narrow_window_h);
+    c.rect(bigger_window_x, bigger_window_y, bigger_window_w, bigger_window_h);
+    c.stroke();
+    c.clip();
+    c.strokeStyle = fg;
+    c.fillStyle = fg;
+
+    if (isNaN(value)) {
+        c.beginPath();
+        const y0 = narrow_window_y;
+        const y1 = narrow_window_y + narrow_window_h;
+        c.moveTo(0, y0);
+        c.lineTo(w, y1);
+        c.moveTo(0, y1);
+        c.lineTo(w, y0);
+        c.stroke();
+        c.restore();
+        return;
+    }
+
+    let { digits, scroll, low10, lowDigits } = mechanicalStyleNumber(
+        value,
+        lowDigitStep,
+    );
+    const formatLowDigits = (x) => x.toFixed(0).padStart(lowDigits, "0");
+    for (let i = 0; i < digits.length; i++) {
+        const p = right ? i : digits.length - i - 1;
+        const y = y0 + scroll[p] * digit_height;
+        let d, m1, m2, p1;
+        if (p == 0) {
+            d = digits[p] * lowDigitStep;
+            m1 = (d == 0 ? low10 : d) - lowDigitStep;
+            m2 = (m1 == 0 ? low10 : d) - lowDigitStep;
+            p1 = d + lowDigitStep;
+            if (p1 >= low10) {
+                p1 -= low10;
+            }
+            let p2 = p1 + lowDigitStep;
+            if (p2 >= low10) {
+                p2 -= low10;
+            }
+            d = formatLowDigits(d);
+            m1 = formatLowDigits(m1);
+            m2 = formatLowDigits(m2);
+            p1 = formatLowDigits(p1);
+            p2 = formatLowDigits(p2);
+            c.fillText(p2, x, y - digit_height * 2);
+        } else {
+            d = digits[p];
+            m1 = d == 0 ? 9 : d - 1;
+            m2 = m1 == 0 ? 9 : m1 - 1;
+            p1 = d == 9 ? 0 : d + 1;
+        }
+        c.fillText(d, x, y);
+        c.fillText(m1, x, y + digit_height);
+        c.fillText(m2, x, y + digit_height * 2);
+        c.fillText(p1, x, y - digit_height);
+        x += sign * digit_width;
+    }
+    c.restore();
+};
+
+/*
+    for (let i = 2100; i > 1000; i -= 0.1) {
+        await device.drawKey(0, (c) => {
+            renderAltimeter(c, null, [i]);
+        });
+        await new Promise((res) => setTimeout(res, 10));
+    }
+    */
+
+const renderIAS = (c, display, values) => {
+    const value = values[0];
+    const bg = "#555";
+    const fg = "white";
+    const w = c.canvas.width;
+    const h = c.canvas.height;
+
+    // draw background
+    c.fillStyle = bg;
+    c.fillRect(0, 0, w, h);
+    c.fillStyle = fg;
+    c.strokeStyle = fg;
+    c.lineWidth = 1;
+
+    renderMechanicalDisplay(c, w, h, values[0], 20, true, 1);
+};
+
+const renderAltimeter = (c, display, values) => {
+    const value = values[0];
+    const bg = "#555";
+    const fg = "white";
+    const w = c.canvas.width;
+    const h = c.canvas.height;
+
+    // draw background
+    c.fillStyle = bg;
+    c.fillRect(0, 0, w, h);
+    c.fillStyle = fg;
+    c.strokeStyle = fg;
+    c.lineWidth = 1;
+
+    renderMechanicalDisplay(c, w, h, values[0], 10, false, 2, 20);
+};
+
 const drawGauge = async (key, label, values) => {
     const types = {
         meter: drawMeterGauge,
         text: drawTextGauge,
         attitude: drawAttitudeIndicator,
+        ias: renderIAS,
+        alt: renderAltimeter,
     };
     await device.drawKey(key, (c) => {
         const display = label.display;
@@ -456,7 +642,7 @@ device.on("connect", async () => {
                     if (xplane_dataref != null) {
                         await xplane.subscribeDataRef(
                             xplane_dataref,
-                            10,
+                            30,
                             async (v) => {
                                 values[k] = v;
                                 if (currentPage == i) {
