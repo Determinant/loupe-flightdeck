@@ -48,6 +48,7 @@
   keys:
     - display:
         type: meter
+        freq: 6,
         source:
           - xplane_dataref: sim/cockpit2/engine/indicators/MPR_in_hg[0]
         min: 10
@@ -59,6 +60,7 @@
             value_end: 30
     - display:
         type: meter
+        freq: 6,
         source:
           - xplane_dataref: sim/cockpit2/engine/indicators/engine_speed_rpm[0]
         min: 0
@@ -75,6 +77,7 @@
             value_end: 3000
     - display:
         type: meter
+        freq: 6
         source:
           - xplane_dataref: sim/flightmodel/controls/flaprat
         min: 0
@@ -96,15 +99,18 @@
         xplane_cmd: sim/flight_controls/flaps_up
     - display:
         type: ias
+        freq: 24
         source:
           - xplane_dataref: sim/cockpit2/gauges/indicators/airspeed_kts_pilot
     - display:
         type: attitude
+        freq: 24
         source:
           - xplane_dataref: sim/cockpit/gyros/the_ind_ahars_pilot_deg # pitch
           - xplane_dataref: sim/cockpit/gyros/phi_ind_ahars_pilot_deg # roll
     - display:
         type: alt
+        freq: 24
         source:
           - xplane_dataref: sim/cockpit2/gauges/indicators/altitude_ft_pilot # alt
           - xplane_dataref: sim/cockpit2/gauges/indicators/vvi_fpm_pilot # vs

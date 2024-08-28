@@ -232,7 +232,7 @@ const formatDisplayText = (formatter, value) => {
     }
 };
 
-const drawAttitudeIndicator = (c, display, values) => {
+const renderAttitudeIndicator = (c, display, values) => {
     const pitch = values[0];
     const roll = values[1];
     const raw = values[2];
@@ -301,7 +301,7 @@ const drawAttitudeIndicator = (c, display, values) => {
     c.stroke();
 };
 
-const drawTextGauge = (c, display, values) => {
+const renderTextGauge = (c, display, values) => {
     const value = values[0];
     const bg = "black";
     const fg = "white";
@@ -331,7 +331,7 @@ const drawTextGauge = (c, display, values) => {
     });
 };
 
-const drawMeterGauge = (c, display, values) => {
+const renderMeterGauge = (c, display, values) => {
     const value = values[0];
     const bg = "black";
     const fg = "white";
@@ -415,7 +415,7 @@ const mechanicalStyleNumber = (value, lowDigitStep = 1) => {
     while (true) {
         t = split(value % 10);
         if (
-            ((i > 0 && digits[i] == 9) || digits[i] == lowMax) &&
+            ((i > 0 && digits[i] == 9) || (i == 0 && digits[i] == lowMax)) &&
             scroll[i] > 0
         ) {
             scroll.push(scroll[i]);
@@ -441,12 +441,13 @@ const renderMechanicalDisplay = (
     right = true,
     bigger_window_width = 2,
     lowDigitStep = 1,
+    size = labelSize,
 ) => {
     const bg = "black";
     const fg = "white";
 
     c.save();
-    c.font = `${labelSize}px '${labelFont}'`;
+    c.font = `${size}px '${labelFont}'`;
     const m = c.measureText("x");
     const y0 =
         h / 2 + (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2;
@@ -536,15 +537,6 @@ const renderMechanicalDisplay = (
     c.restore();
 };
 
-/*
-    for (let i = 2100; i > 1000; i -= 0.1) {
-        await device.drawKey(0, (c) => {
-            renderAltimeter(c, null, [i]);
-        });
-        await new Promise((res) => setTimeout(res, 10));
-    }
-    */
-
 const renderIAS = (c, display, values) => {
     const value = values[0];
     const bg = "#555";
@@ -572,18 +564,29 @@ const renderAltimeter = (c, display, values) => {
     // draw background
     c.fillStyle = bg;
     c.fillRect(0, 0, w, h);
-    c.fillStyle = fg;
-    c.strokeStyle = fg;
-    c.lineWidth = 1;
-
-    renderMechanicalDisplay(c, w, h, values[0], 10, false, 2, 20);
+    renderMechanicalDisplay(c, w, h, values[0], 5, false, 2, 20, 18);
+    const vsi = values[1];
+    const vsi_bg_x = w / 2 + 4;
+    c.fillRect(vsi_bg_x, 0, w - vsi_bg_x, h);
+    if (isNumber(vsi)) {
+        c.fillStyle = "#000";
+        const vsi_h = 20;
+        const vsi_x = vsi_bg_x + 2;
+        const vsi_y =
+            (1 - (Math.min(Math.max(vsi, -2000), 2000) + 2000) / 4000) *
+            (h - vsi_h);
+        c.fillRect(vsi_x, vsi_y, w - vsi_x, vsi_h);
+        c.fillStyle = fg;
+        c.font = `12px '${labelFont}'`;
+        c.fillText(Math.trunc(vsi / 10) * 10, vsi_x + 2, vsi_y + vsi_h * 0.8);
+    }
 };
 
 const drawGauge = async (key, label, values) => {
     const types = {
-        meter: drawMeterGauge,
-        text: drawTextGauge,
-        attitude: drawAttitudeIndicator,
+        meter: renderMeterGauge,
+        text: renderTextGauge,
+        attitude: renderAttitudeIndicator,
         ias: renderIAS,
         alt: renderAltimeter,
     };
@@ -617,6 +620,14 @@ const loadPage = async (page) => {
 // Observe connect events
 device.on("connect", async () => {
     console.info("connected");
+    /*
+    for (let i = 3600; i > 1000; i -= 0.1) {
+        await device.drawKey(0, (c) => {
+            renderAltimeter(c, null, [i]);
+        });
+        await new Promise((res) => setTimeout(res, 10));
+    }
+    */
     for (let i = 0; i < pages.length; i++) {
         const page = pages[i] || {};
         const keys = page.keys;
@@ -636,13 +647,16 @@ device.on("connect", async () => {
                 for (let k = 0; k < conf.display.source.length; k++) {
                     values.push(NaN);
                 }
+                const freq = isNumber(conf.display.freq)
+                    ? conf.display.freq
+                    : 1;
                 for (let k = 0; k < conf.display.source.length; k++) {
-                    const xplane_dataref =
-                        conf.display.source[k].xplane_dataref;
+                    const source = conf.display.source[k];
+                    const xplane_dataref = source.xplane_dataref;
                     if (xplane_dataref != null) {
                         await xplane.subscribeDataRef(
                             xplane_dataref,
-                            30,
+                            freq,
                             async (v) => {
                                 values[k] = v;
                                 if (currentPage == i) {
