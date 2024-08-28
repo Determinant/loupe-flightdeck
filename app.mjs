@@ -568,15 +568,17 @@ const renderAltimeter = (c, display, values) => {
     const vsi = values[1];
     const vsi_bg_x = w / 2 + 4;
     c.fillRect(vsi_bg_x, 0, w - vsi_bg_x, h);
+    c.fillStyle = "#000";
+    const vsi_h = 20;
+    const vsi_x = vsi_bg_x + 2;
+    const vsi_y =
+        (1 -
+            (Math.min(Math.max(isNumber(vsi) ? vsi : 0, -2000), 2000) + 2000) /
+                4000) *
+        (h - vsi_h);
+    c.fillRect(vsi_x, vsi_y, w - vsi_x, vsi_h);
+    c.fillStyle = fg;
     if (isNumber(vsi)) {
-        c.fillStyle = "#000";
-        const vsi_h = 20;
-        const vsi_x = vsi_bg_x + 2;
-        const vsi_y =
-            (1 - (Math.min(Math.max(vsi, -2000), 2000) + 2000) / 4000) *
-            (h - vsi_h);
-        c.fillRect(vsi_x, vsi_y, w - vsi_x, vsi_h);
-        c.fillStyle = fg;
         c.font = `12px '${labelFont}'`;
         c.fillText(Math.trunc(vsi / 10) * 10, vsi_x + 2, vsi_y + vsi_h * 0.8);
     }
