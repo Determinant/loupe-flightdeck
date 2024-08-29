@@ -257,10 +257,19 @@ const formatDisplayText = (formatter, values) => {
     return values[0].toFixed(0).toString();
 };
 
+const formatDisplayColor = (color, values) => {
+    if (color) {
+        return Function("$d", `"use strict"; return(\`${color}\`);`)(values);
+    }
+    return "#fff";
+};
+
 const renderAttitudeIndicator = (c, display, values) => {
     const pitch = values[0];
     const roll = values[1];
-    const cdi = values[2];
+    const src = display.src[values[2]];
+    const cdi = src ? values[src.def] : null;
+    const received = src ? values[src.received] : null;
     const bg = "black";
     const fg = "white";
     const w = c.canvas.width;
@@ -341,19 +350,21 @@ const renderAttitudeIndicator = (c, display, values) => {
     }
     c.stroke();
 
-    // draw CDI diamond
-    const cdi_y = y0 + 13 * cdi;
-    const cdi_h = 7;
-    const cdi_w = 4;
-    c.fillStyle = "lightgreen";
-    c.strokeStyle = "black";
-    c.beginPath();
-    c.moveTo(vdef_x, cdi_y + cdi_h);
-    c.lineTo(vdef_x - cdi_w, cdi_y);
-    c.lineTo(vdef_x, cdi_y - cdi_h);
-    c.lineTo(vdef_x + cdi_w, cdi_y);
-    c.stroke();
-    c.fill();
+    if (received != 0) {
+        // draw CDI diamond
+        const cdi_y = y0 + 13 * cdi;
+        const cdi_h = 7;
+        const cdi_w = 4;
+        c.fillStyle = "#2dfe54";
+        c.strokeStyle = "black";
+        c.beginPath();
+        c.moveTo(vdef_x, cdi_y + cdi_h);
+        c.lineTo(vdef_x - cdi_w, cdi_y);
+        c.lineTo(vdef_x, cdi_y - cdi_h);
+        c.lineTo(vdef_x + cdi_w, cdi_y);
+        c.stroke();
+        c.fill();
+    }
 };
 
 const renderTextGauge = (c, display, values) => {
@@ -381,9 +392,9 @@ const renderTextGauge = (c, display, values) => {
         size: display.size,
         size2: display.size2,
         size3: display.size3,
-        color_fg: display.color_fg,
-        color_fg2: display.color_fg2,
-        color_fg3: display.color_fg3,
+        color_fg: formatDisplayColor(display.color_fg, values),
+        color_fg2: formatDisplayColor(display.color_fg2, values),
+        color_fg3: formatDisplayColor(display.color_fg3, values),
     });
 };
 
@@ -671,6 +682,7 @@ const renderHSI = (c, display, values) => {
     const src = display.navs[values[2]];
     const crs = src ? deg2Rad(values[src.crs]) : null;
     let def = src ? Math.min(Math.max(values[src.def], -3), 3) : null;
+    const received = src ? values[src.received] : null;
     if (isNaN(def)) {
         def = 0;
     }
@@ -701,7 +713,7 @@ const renderHSI = (c, display, values) => {
         const bug_y0 = -(r - 8);
         c.stroke();
         c.rotate(hdg_bug);
-        c.fillStyle = "blue";
+        c.fillStyle = "cyan";
         c.beginPath();
         c.moveTo(0, bug_y1);
         c.lineTo(-bug_w, -(r + 1));
@@ -726,12 +738,14 @@ const renderHSI = (c, display, values) => {
         c.stroke();
 
         c.beginPath();
-        const cdi_x = 13 * def;
         c.lineWidth = 3;
         c.strokeStyle = src.color ? src.color : "magenta";
 
-        c.moveTo(cdi_x, -(cdi_r - 1));
-        c.lineTo(cdi_x, cdi_r - 1);
+        if (received != 0) {
+            const cdi_x = 13 * def;
+            c.moveTo(cdi_x, -(cdi_r - 1));
+            c.lineTo(cdi_x, cdi_r - 1);
+        }
 
         c.moveTo(0, -r);
         c.lineTo(0, -(cdi_r + 1));
