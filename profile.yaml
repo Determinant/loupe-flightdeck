@@ -111,7 +111,7 @@
           - xplane_dataref: sim/cockpit/gyros/phi_ind_ahars_pilot_deg # roll
           - xplane_dataref: sim/cockpit2/radios/actuators/HSI_source_select_pilot
           - xplane_dataref: sim/cockpit2/radios/indicators/hsi_vdef_dots_pilot
-          - xplane_dataref: sim/cockpit2/radios/indicators/hsi_display_vertical_pilot
+          - xplane_dataref: sim/cockpit2/radios/indicators/hsi_flag_glideslope_pilot
 
         src:
           2:

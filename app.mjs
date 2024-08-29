@@ -350,7 +350,7 @@ const renderAttitudeIndicator = (c, display, values) => {
     }
     c.stroke();
 
-    if (received != 0) {
+    if (received == 0) {
         // draw CDI diamond
         const cdi_y = y0 + 13 * cdi;
         const cdi_h = 7;
