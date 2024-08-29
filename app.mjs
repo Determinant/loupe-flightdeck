@@ -8,6 +8,8 @@ import { discover, HAPTIC } from "loupedeck";
 import { readFile } from "fs/promises";
 import { parse } from "yaml";
 import { XPlane } from "./xplane.mjs";
+import { isArray } from "util";
+import { platform } from "process";
 
 const labelFont = "OCR A Extended";
 const labelSize = 22;
@@ -66,35 +68,48 @@ const getKeyConf = (i) => {
 
 const rectifyLabel = (conf) => {
     // conf must be non-null
-    let text, text2, font, font2;
-    let color_bg, color_fg;
-    let color_bg2, color_fg2;
+    let text, font;
+    let color_bg = [],
+        color_fg = [];
 
-    let size = labelSize;
     if (isObject(conf)) {
-        if (conf.size != null) {
-            size = conf.size;
+        text = [conf.text];
+        color_bg = [conf.color_bg];
+        color_fg = [conf.color_fg];
+        if (conf.text2 != null) {
+            text.push(conf.text2);
         }
-        text = conf.text;
-        text2 = conf.text2;
-        color_bg = conf.color_bg;
-        color_fg = conf.color_fg;
-        color_bg2 = conf.color_bg2;
-        color_fg2 = conf.color_fg2;
-        font2 = `${size * 0.9}px '${labelFont}'`;
+        if (conf.text3 != null) {
+            text.push(conf.text3);
+        }
+        if (conf.color_bg2) {
+            color_bg.push(conf.color_bg2);
+        }
+        if (conf.color_fg2) {
+            color_fg.push(conf.color_fg2);
+        }
+        if (conf.color_bg3) {
+            color_bg.push(conf.color_bg3);
+        }
+        if (conf.color_fg3) {
+            color_fg.push(conf.color_fg3);
+        }
+        let size = [conf.size != null ? conf.size : labelSize];
+        size.push(conf.size2 != null ? conf.size2 : size[0] * 0.9);
+        size.push(conf.size3 != null ? conf.size3 : size[1]);
+        font = [];
+        for (let i = 0; i < size.length; i++) {
+            font.push(`${size[i]}px '${labelFont}'`);
+        }
     } else {
-        text = conf.toString();
+        text = [conf.toString()];
+        font = [`${labelSize}px '${labelFont}'`];
     }
-    font = `${size}px '${labelFont}'`;
     return {
         text,
-        text2,
         font,
-        font2,
         color_bg,
         color_fg,
-        color_bg2,
-        color_fg2,
     };
 };
 
@@ -120,7 +135,7 @@ const drawKey = async (id, conf, pressed) => {
         c.strokeRect(padding, padding, w - padding * 2, h - padding * 2);
 
         if (conf != null) {
-            drawDoubleLineText(c, conf);
+            drawMultiLineText(c, conf);
         }
         // otherwise the empty key style is still drawn
     });
@@ -158,8 +173,8 @@ const drawSideKnobs = async (side, confs, highlight) => {
                 const { text, font, color_bg, color_fg } = rectifyLabel(
                     confs[i],
                 );
-                if (color_bg) {
-                    c.fillStyle = color_bg;
+                if (color_bg[0]) {
+                    c.fillStyle = color_bg[0];
                     c.fillRect(
                         x_padding + 2,
                         y_padding + y_offset + 2,
@@ -167,75 +182,85 @@ const drawSideKnobs = async (side, confs, highlight) => {
                         h - y_padding * 2 - 2,
                     );
                 }
-                c.font = font;
+                c.font = font[0];
                 const {
                     width,
                     actualBoundingBoxAscent,
                     actualBoundingBoxDescent,
-                } = c.measureText(text);
+                } = c.measureText(text[0]);
                 const x_axis = (h - width) / 2;
                 const y_axis =
                     w / 2 +
                     (actualBoundingBoxAscent - actualBoundingBoxDescent) / 2;
                 c.rotate((90 * Math.PI) / 180);
                 c.fillStyle = hl ? "black" : "white";
-                c.fillText(text, x_axis + y_offset, -(w - y_axis));
+                c.fillText(text[0], x_axis + y_offset, -(w - y_axis));
                 c.resetTransform();
             }
         }
     });
 };
 
-const drawDoubleLineText = (c, conf) => {
+const drawMultiLineText = (c, conf) => {
     const w = c.canvas.width;
     const h = c.canvas.height;
 
-    const { text, text2, font, font2, color_fg2 } = rectifyLabel(conf);
+    const { text, font, color_fg } = rectifyLabel(conf);
 
-    c.font = font;
-    const m1 = c.measureText(text);
-    const x1 = (w - m1.width) / 2;
-    if (text2 != null) {
-        const m2 = c.measureText(text2);
-        const h1 = m1.actualBoundingBoxAscent - m1.actualBoundingBoxDescent;
-        const h2 = m2.actualBoundingBoxAscent - m2.actualBoundingBoxDescent;
-        const sep = h1;
-        const y1 = h / 2 + h1 / 2 - sep;
-        const x2 = (w - m2.width) / 2;
-        const y2 = y1 + h1 / 2 + sep + h2 / 2;
-        c.fillText(text, x1, y1);
-
-        if (color_fg2 != null) {
-            c.fillStyle = color_fg2;
-        }
-        c.font = font2;
-        c.fillText(text2, x2, y2);
-    } else {
-        const y1 =
-            h / 2 +
-            (m1.actualBoundingBoxAscent - m1.actualBoundingBoxDescent) / 2;
-        c.fillText(text, x1, y1);
+    c.save();
+    c.font = font[0];
+    let ms = [];
+    let text_h = 0;
+    const mx = c.measureText("x");
+    const sep = conf.sep
+        ? conf.sep
+        : mx.actualBoundingBoxAscent - mx.actualBoundingBoxDescent;
+    for (let i = 0; i < text.length; i++) {
+        c.font = font[i];
+        const m = c.measureText(text[i]);
+        ms.push(m);
+        text_h += m.actualBoundingBoxAscent - m.actualBoundingBoxDescent;
     }
+    text_h += (text.length - 1) * sep;
+    let y0 = (h - text_h) / 2;
+    for (let i = 0; i < text.length; i++) {
+        const x =
+            Math.max(
+                0,
+                w -
+                    (ms[i].actualBoundingBoxRight -
+                        ms[i].actualBoundingBoxLeft),
+            ) / 2;
+        const hh =
+            ms[i].actualBoundingBoxAscent - ms[i].actualBoundingBoxDescent;
+        const y = y0 + hh;
+        c.font = font[i];
+        if (color_fg[i]) {
+            c.fillStyle = color_fg[i];
+        }
+        c.fillText(text[i], x, y);
+        y0 += hh + sep;
+    }
+    c.restore();
 };
 
-const formatDisplayText = (formatter, value) => {
-    if (isNaN(value)) {
-        return "X";
-    }
+const formatDisplayText = (formatter, values) => {
     if (formatter) {
         return Function(
-            "$value",
+            "$d",
             `"use strict"; return(\`${formatter}\`);`,
-        )(value);
-    } else {
-        return value.toFixed(0).toString();
+        )(values);
     }
+    if (isNaN(values[0])) {
+        return "X";
+    }
+    return values[0].toFixed(0).toString();
 };
 
 const renderAttitudeIndicator = (c, display, values) => {
     const pitch = values[0];
     const roll = values[1];
-    const raw = values[2];
+    const cdi = values[2];
     const bg = "black";
     const fg = "white";
     const w = c.canvas.width;
@@ -257,16 +282,17 @@ const renderAttitudeIndicator = (c, display, values) => {
     c.translate(x0, y0);
     c.rotate((-roll * Math.PI) / 180);
     c.translate(0, (pitch / 10) * longSep);
+
     c.fillStyle = "#0077b6";
     c.fillRect(-w, -2 * h, 2 * w, 4 * h);
     c.fillStyle = "#99582a";
     c.fillRect(-w, 0, 2 * w, 4 * h);
+
     c.lineWidth = 1;
     c.strokeStyle = fg;
     c.beginPath();
     c.moveTo(-0.75 * w, 0);
     c.lineTo(0.75 * w, 0);
-
     c.fillStyle = fg;
     c.font = `10px ${labelFont}`;
     const drawMark = (i) => {
@@ -292,13 +318,42 @@ const renderAttitudeIndicator = (c, display, values) => {
     c.moveTo(x0 - 30, y0);
     c.lineTo(x0 - 10, y0);
     c.lineTo(x0 - 10, y0 + 8);
-    c.stroke();
 
-    c.beginPath();
     c.moveTo(x0 + 30, y0);
     c.lineTo(x0 + 10, y0);
     c.lineTo(x0 + 10, y0 + 8);
     c.stroke();
+
+    // draw vertical deflection
+    const pi2 = 2 * Math.PI;
+    const vdef_x = w - 10;
+    const vdef_r = 3;
+
+    c.strokeStyle = "white";
+    c.lineWidth = 1;
+    c.beginPath();
+    for (let i = -2; i <= 2; i++) {
+        if (i != 0) {
+            const vdef_y = y0 + 13 * i;
+            c.moveTo(vdef_x + vdef_r, vdef_y);
+            c.arc(vdef_x, vdef_y, vdef_r, 0, pi2);
+        }
+    }
+    c.stroke();
+
+    // draw CDI diamond
+    const cdi_y = y0 + 13 * cdi;
+    const cdi_h = 7;
+    const cdi_w = 4;
+    c.fillStyle = "lightgreen";
+    c.strokeStyle = "black";
+    c.beginPath();
+    c.moveTo(vdef_x, cdi_y + cdi_h);
+    c.lineTo(vdef_x - cdi_w, cdi_y);
+    c.lineTo(vdef_x, cdi_y - cdi_h);
+    c.lineTo(vdef_x + cdi_w, cdi_y);
+    c.stroke();
+    c.fill();
 };
 
 const renderTextGauge = (c, display, values) => {
@@ -308,9 +363,6 @@ const renderTextGauge = (c, display, values) => {
     const w = c.canvas.width;
     const h = c.canvas.height;
 
-    const text = formatDisplayText(display.formatter, value);
-    const m = c.measureText(text);
-
     // draw background
     c.fillStyle = bg;
     c.fillRect(0, 0, w, h);
@@ -318,21 +370,24 @@ const renderTextGauge = (c, display, values) => {
     c.strokeStyle = fg;
     c.lineWidth = 1;
 
-    drawDoubleLineText(c, {
-        text,
-        text2:
-            display.tag != null
-                ? display.tag
-                : formatDisplayText(
-                      display.formatter2 || display.formatter,
-                      values[1],
-                  ),
+    drawMultiLineText(c, {
+        text: formatDisplayText(display.formatter, values),
+        text2: display.formatter2
+            ? formatDisplayText(display.formatter2, values)
+            : undefined,
+        text3: display.formatter3
+            ? formatDisplayText(display.formatter3, values)
+            : undefined,
+        size: display.size,
+        size2: display.size2,
+        size3: display.size3,
+        color_fg: display.color_fg,
         color_fg2: display.color_fg2,
+        color_fg3: display.color_fg3,
     });
 };
 
 const renderMeterGauge = (c, display, values) => {
-    const value = values[0];
     const bg = "black";
     const fg = "white";
     const w = c.canvas.width;
@@ -344,12 +399,12 @@ const renderMeterGauge = (c, display, values) => {
         return;
     }
 
-    let reading = (value - min) / (max - min);
+    let reading = (values[0] - min) / (max - min);
     if (isNaN(reading)) {
         reading = min;
     }
 
-    const text = formatDisplayText(display.formatter, value);
+    const text = formatDisplayText(display.formatter, values);
 
     // draw background
     c.fillStyle = bg;
@@ -582,6 +637,115 @@ const renderAltimeter = (c, display, values) => {
         c.font = `12px '${labelFont}'`;
         c.fillText(Math.trunc(vsi / 10) * 10, vsi_x + 2, vsi_y + vsi_h * 0.8);
     }
+    const selected = values[2];
+    if (isNumber(selected)) {
+        c.fillStyle = "#6697ff";
+        c.font = `14px '${labelFont}'`;
+        c.fillText(selected, 15, 18);
+    }
+};
+
+const renderHSI = (c, display, values) => {
+    const bg = "black";
+    const fg = "white";
+    const w = c.canvas.width;
+    const h = c.canvas.height;
+
+    // draw background
+    c.fillStyle = bg;
+    c.fillRect(0, 0, w, h);
+    c.fillStyle = fg;
+    c.strokeStyle = fg;
+    c.lineWidth = 1;
+
+    const x0 = w / 2;
+    const y0 = h / 2;
+    const r = w / 2 - 5;
+    const f1 = 0.8;
+    const f2 = 0.9;
+    const cdi_r = 0.4 * r;
+    const vdef_r = 3;
+    const deg2Rad = (x) => (x / 180) * Math.PI;
+    const hdg = deg2Rad(values[0]);
+    const hdg_bug = deg2Rad(values[1]);
+    const src = display.navs[values[2]];
+    const crs = src ? deg2Rad(values[src.crs]) : null;
+    let def = src ? Math.min(Math.max(values[src.def], -3), 3) : null;
+    if (isNaN(def)) {
+        def = 0;
+    }
+    const polarXY = (theta, r) => {
+        const t = -theta - Math.PI / 2;
+        const dx = r * Math.cos(t);
+        const dy = -r * Math.sin(t);
+        return { dx, dy };
+    };
+    const pi2 = Math.PI * 2;
+
+    c.translate(x0, y0);
+    c.rotate(-hdg);
+    c.beginPath();
+    for (let i = 0; i < 36; i++) {
+        const { dx, dy } = polarXY(deg2Rad(i * 10), r);
+        const f = (i & 1) == 0 ? f1 : f2;
+        c.moveTo(dx, dy);
+        c.lineTo(dx * f, dy * f);
+    }
+
+    c.font = `14px '${labelFont}'`;
+    c.fillText("N", -5, -0.5 * r);
+
+    if (isNumber(hdg_bug)) {
+        const bug_w = 4;
+        const bug_y1 = -(r - 3);
+        const bug_y0 = -(r - 8);
+        c.stroke();
+        c.rotate(hdg_bug);
+        c.fillStyle = "blue";
+        c.beginPath();
+        c.moveTo(0, bug_y1);
+        c.lineTo(-bug_w, -(r + 1));
+        c.lineTo(-bug_w, bug_y0);
+        c.lineTo(bug_w, bug_y0);
+        c.lineTo(bug_w, -(r + 1));
+        c.lineTo(0, bug_y1);
+        c.fill();
+        c.rotate(-hdg_bug);
+    }
+
+    if (crs != null) {
+        c.rotate(crs);
+
+        for (let i = -2; i <= 2; i++) {
+            if (i != 0) {
+                const x = 13 * i;
+                c.moveTo(x + vdef_r, 0);
+                c.arc(x, 0, vdef_r, 0, pi2);
+            }
+        }
+        c.stroke();
+
+        c.beginPath();
+        const cdi_x = 13 * def;
+        c.lineWidth = 3;
+        c.strokeStyle = src.color ? src.color : "magenta";
+
+        c.moveTo(cdi_x, -(cdi_r - 1));
+        c.lineTo(cdi_x, cdi_r - 1);
+
+        c.moveTo(0, -r);
+        c.lineTo(0, -(cdi_r + 1));
+        c.moveTo(0, -r);
+
+        // crs arrowhead
+        c.lineTo(-5, -0.8 * r);
+        c.lineTo(5, -0.8 * r);
+        c.lineTo(0, -r);
+
+        c.moveTo(0, r);
+        c.lineTo(0, cdi_r + 1);
+    }
+    c.stroke();
 };
 
 const drawGauge = async (key, label, values) => {
@@ -591,6 +755,7 @@ const drawGauge = async (key, label, values) => {
         attitude: renderAttitudeIndicator,
         ias: renderIAS,
         alt: renderAltimeter,
+        hsi: renderHSI,
     };
     await device.drawKey(key, (c) => {
         const display = label.display;
@@ -613,7 +778,7 @@ const loadPage = async (page) => {
         const conf = Array.isArray(keys) && keys.length > i ? keys[i] : null;
         pms.push(drawKey(i, conf, false));
         if (isObject(conf) && conf.display != null) {
-            drawGauge(i, conf, NaN);
+            drawGauge(i, conf, []);
         }
     }
     await Promise.all(pms);
@@ -625,7 +790,7 @@ device.on("connect", async () => {
     /*
     for (let i = 3600; i > 1000; i -= 0.1) {
         await device.drawKey(0, (c) => {
-            renderAltimeter(c, null, [i]);
+            renderAltimeter(c, null, [i, 500]);
         });
         await new Promise((res) => setTimeout(res, 10));
     }

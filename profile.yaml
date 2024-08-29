@@ -1,4 +1,5 @@
 ---
+# This is the profile that I created for my own setup (good for DA40 with G1000 in X-Plane).
 # for xplane_cmd, refer to /Resources/plugins/Commands.txt under your X-Plane installation
 # for xplane_dataref, refer to /Resources/plugins/DataRefs.txt
 #
@@ -48,35 +49,6 @@
   keys:
     - display:
         type: meter
-        freq: 6,
-        source:
-          - xplane_dataref: sim/cockpit2/engine/indicators/MPR_in_hg[0]
-        min: 10
-        max: 30
-        formatter: '${$value.toFixed(2)}'
-        stops:
-          - color: 'green'
-            value_begin: 13
-            value_end: 30
-    - display:
-        type: meter
-        freq: 6,
-        source:
-          - xplane_dataref: sim/cockpit2/engine/indicators/engine_speed_rpm[0]
-        min: 0
-        max: 3000
-        stops:
-          - color: 'green'
-            value_begin: 500
-            value_end: 2400
-          - color: 'yellow'
-            value_begin: 2400
-            value_end: 2700
-          - color: 'red'
-            value_begin: 2700
-            value_end: 3000
-    - display:
-        type: meter
         freq: 6
         source:
           - xplane_dataref: sim/flightmodel/controls/flaprat
@@ -92,8 +64,37 @@
           - color: 'gray'
             value_begin: 0.8
             value_end: 1
-        formatter: '${($value * 100).toFixed(0)}%'
-    - text: Flap
+        formatter: '${$d[0] != null ? ($d[0] * 100).toFixed(0) : "X"}%'
+    - display:
+        type: meter
+        freq: 1,
+        source:
+          - xplane_dataref: sim/cockpit2/engine/indicators/MPR_in_hg[0]
+        min: 10
+        max: 30
+        formatter: '${$d[0] != null ? $d[0].toFixed(2) : "X"}'
+        stops:
+          - color: 'green'
+            value_begin: 13
+            value_end: 30
+    - display:
+        type: meter
+        freq: 1,
+        source:
+          - xplane_dataref: sim/cockpit2/engine/indicators/engine_speed_rpm[0]
+        min: 0
+        max: 3000
+        stops:
+          - color: 'green'
+            value_begin: 500
+            value_end: 2400
+          - color: 'yellow'
+            value_begin: 2400
+            value_end: 2700
+          - color: 'red'
+            value_begin: 2700
+            value_end: 3000
+    - text: Flaps
       text2: Up
       pressed:
         xplane_cmd: sim/flight_controls/flaps_up
@@ -108,37 +109,76 @@
         source:
           - xplane_dataref: sim/cockpit/gyros/the_ind_ahars_pilot_deg # pitch
           - xplane_dataref: sim/cockpit/gyros/phi_ind_ahars_pilot_deg # roll
+          - xplane_dataref: sim/cockpit2/radios/indicators/gps_hdef_dots_pilot
+
     - display:
         type: alt
         freq: 24
         source:
           - xplane_dataref: sim/cockpit2/gauges/indicators/altitude_ft_pilot # alt
           - xplane_dataref: sim/cockpit2/gauges/indicators/vvi_fpm_pilot # vs
-    - text: Flap
+          - xplane_dataref: sim/cockpit/autopilot/altitude
+    - text: Flaps
       text2: Down
       pressed:
         xplane_cmd: sim/flight_controls/flaps_down
-    -
     - display:
         type: text
+        source:
+          - xplane_dataref: sim/cockpit/autopilot/autopilot_state
+          - xplane_dataref: sim/cockpit2/radios/actuators/HSI_source_select_pilot
+        formatter: '${($d[0] & 2) ? "HDG" : (($d[0] & 0x200) ? "NAV" : "ROL")} ${($d[0] & 0x10) ? "VS" : (($d[0] & 0x40) ? "FLC" : (($d[0] & 0x4000) ? "ALT" : "PIT"))}'
+        formatter2: '${$d[1] == 0 ? "NAV1" : ($d[1] == 1 ? "NAV2" : ($d[1] == 2 ? "GPS" : "X"))}'
+        size: 16
+        size2: 16
+    - display:
+        type: hsi
+        freq: 12
         source:
           - xplane_dataref: sim/cockpit2/gauges/indicators/heading_AHARS_deg_mag_pilot
           - xplane_dataref: sim/cockpit2/autopilot/heading_dial_deg_mag_pilot
-        formatter: '${$value.toFixed(0).padStart(3, "0")}'
-        color_fg2: '#1a62fd'
+          - xplane_dataref: sim/cockpit2/radios/actuators/HSI_source_select_pilot
+          - xplane_dataref: sim/cockpit/radios/gps_course_degtm
+          - xplane_dataref: sim/cockpit2/radios/indicators/gps_hdef_dots_pilot
+          - xplane_dataref: sim/cockpit2/radios/actuators/nav1_obs_deg_mag_pilot
+          - xplane_dataref: sim/cockpit2/radios/indicators/nav1_hdef_dots_pilot
+          - xplane_dataref: sim/cockpit2/radios/actuators/nav2_obs_deg_mag_pilot
+          - xplane_dataref: sim/cockpit2/radios/indicators/nav2_hdef_dots_pilot
+        hdg: 0
+        src: 1
+        navs:
+          2:
+            crs: 3
+            def: 4
+            color: magenta
+          0:
+            crs: 5
+            def: 6
+            color: green
+          1:
+            crs: 7
+            def: 8
+            color: green
     - display:
         type: text
+        freq: 6
         source:
+          - xplane_dataref: sim/cockpit2/gauges/indicators/heading_AHARS_deg_mag_pilot
+          - xplane_dataref: sim/cockpit2/autopilot/heading_dial_deg_mag_pilot
           - xplane_dataref: sim/cockpit/radios/gps_course_degtm
-        tag: CRS
-        formatter: '${$value.toFixed(0).padStart(3, "0")}'
-        color_fg2: 'magenta'
+        formatter: '${$d[0] != null ? $d[0].toFixed(0).padStart(3, "0") : "xxx"}'
+        formatter2: 'HDG ${$d[1] != null ? $d[1].toFixed(0).padStart(3, "0") : "xxx"}'
+        formatter3: 'CRS ${$d[2] != null ? $d[2].toFixed(0).padStart(3, "0") : "xxx"}'
+        color_fg2: '#1a62fd'
+        color_fg3: 'magenta'
+        size2: 16
+        size3: 16
     - text: Brake
       pressed:
         xplane_cmd: sim/flight_controls/brakes_toggle_regular
 
 # Page 1
-- left:
+- right:
     - text: HDG
       inc:
         xplane_cmd: sim/GPS/g1000n1_hdg_up
@@ -158,11 +198,6 @@
         xplane_cmd: sim/GPS/g1000n1_crs_down
       pressed:
         xplane_cmd: sim/GPS/g1000n1_crs_sync
-
-  right:
-    - ''
-    - ''
-    - ''
   keys:
     - text: AP
       pressed:
