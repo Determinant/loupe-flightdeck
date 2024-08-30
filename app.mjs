@@ -66,47 +66,28 @@ const getKeyConf = (i) => {
     return null;
 };
 
-const rectifyLabel = (conf) => {
+const getTextStyles = (conf) => {
     // conf must be non-null
-    let text, font;
-    let color_bg = [],
-        color_fg = [];
+    let font;
+    let color_bg = [];
+    let color_fg = [];
 
     if (isObject(conf)) {
-        text = [conf.text];
-        color_bg = [conf.color_bg];
-        color_fg = [conf.color_fg];
-        if (conf.text2 != null) {
-            text.push(conf.text2);
-        }
-        if (conf.text3 != null) {
-            text.push(conf.text3);
-        }
-        if (conf.color_bg2) {
-            color_bg.push(conf.color_bg2);
-        }
-        if (conf.color_fg2) {
-            color_fg.push(conf.color_fg2);
-        }
-        if (conf.color_bg3) {
-            color_bg.push(conf.color_bg3);
-        }
-        if (conf.color_fg3) {
-            color_fg.push(conf.color_fg3);
-        }
-        let size = [conf.size != null ? conf.size : labelSize];
-        size.push(conf.size2 != null ? conf.size2 : size[0] * 0.9);
-        size.push(conf.size3 != null ? conf.size3 : size[1]);
+        const size = Array.isArray(conf.size) ? conf.size : [conf.size];
+        color_bg = Array.isArray(conf.color_bg)
+            ? conf.color_bg
+            : [conf.color_bg];
+        color_fg = Array.isArray(conf.color_fg)
+            ? conf.color_fg
+            : [conf.color_fg];
         font = [];
         for (let i = 0; i < size.length; i++) {
-            font.push(`${size[i]}px '${labelFont}'`);
+            font.push(`${size[i] ? size[i] : labelSize}px '${labelFont}'`);
         }
     } else {
-        text = [conf.toString()];
         font = [`${labelSize}px '${labelFont}'`];
     }
     return {
-        text,
         font,
         color_bg,
         color_fg,
@@ -135,7 +116,12 @@ const drawKey = async (id, conf, pressed) => {
         c.strokeRect(padding, padding, w - padding * 2, h - padding * 2);
 
         if (conf != null) {
-            drawMultiLineText(c, conf);
+            renderMultiLineText(
+                c,
+                getLabelText(conf),
+                getTextStyles(conf),
+                conf,
+            );
         }
         // otherwise the empty key style is still drawn
     });
@@ -170,9 +156,8 @@ const drawSideKnobs = async (side, confs, highlight) => {
                 h - y_padding * 2,
             );
             if (Array.isArray(confs) && confs.length > i && confs[i] != null) {
-                const { text, font, color_bg, color_fg } = rectifyLabel(
-                    confs[i],
-                );
+                const { font, color_bg, color_fg } = getTextStyles(confs[i]);
+                const text = getLabelText(confs[i]);
                 if (color_bg[0]) {
                     c.fillStyle = color_bg[0];
                     c.fillRect(
@@ -201,11 +186,11 @@ const drawSideKnobs = async (side, confs, highlight) => {
     });
 };
 
-const drawMultiLineText = (c, conf) => {
+const renderMultiLineText = (c, text, styles, conf) => {
     const w = c.canvas.width;
     const h = c.canvas.height;
 
-    const { text, font, color_fg } = rectifyLabel(conf);
+    const { font, color_fg } = styles;
 
     c.save();
     c.font = font[0];
@@ -244,24 +229,59 @@ const drawMultiLineText = (c, conf) => {
     c.restore();
 };
 
-const formatDisplayText = (formatter, values) => {
-    if (formatter) {
-        return Function(
-            "$d",
-            `"use strict"; return(\`${formatter}\`);`,
-        )(values);
+const getLabelText = (conf) => {
+    let text;
+    if (isObject(conf)) {
+        text = Array.isArray(conf.label) ? conf.label : [conf.label];
+    } else {
+        text = [conf.toString()];
     }
-    if (isNaN(values[0])) {
-        return "X";
-    }
-    return values[0].toFixed(0).toString();
+    return text;
 };
 
-const formatDisplayColor = (color, values) => {
-    if (color) {
-        return Function("$d", `"use strict"; return(\`${color}\`);`)(values);
+const formatValues = (conf, values, n = 1) => {
+    const f = (fmt) => {
+        if (fmt) {
+            return Function("$d", `"use strict"; return(\`${fmt}\`);`)(values);
+        }
+        if (isNaN(values[0])) {
+            return "X";
+        }
+        return values[0].toFixed(0).toString();
+    };
+
+    let last;
+    let text = [];
+    const formatter = Array.isArray(conf.formatter)
+        ? conf.formatter
+        : [conf.formatter];
+    for (let i = 0; i < n; i++) {
+        let fmt = formatter[i] || last;
+        text.push(f(fmt));
+        last = fmt;
     }
-    return "#fff";
+    return text;
+};
+
+const formatColors = (color_name, conf, values, n = 1) => {
+    const f = (fmt, v) => {
+        if (fmt) {
+            return Function("$d", `"use strict"; return(\`${fmt}\`);`)(values);
+        }
+        return "#fff";
+    };
+
+    let last;
+    let color = [];
+    const formatter = Array.isArray(conf[color_name])
+        ? conf[color_name]
+        : [conf[color_name]];
+    for (let i = 0; i < n; i++) {
+        let fmt = formatter[i] || last;
+        color.push(f(fmt));
+        last = fmt;
+    }
+    return color;
 };
 
 const renderAttitudeIndicator = (c, display, values) => {
@@ -381,21 +401,18 @@ const renderTextGauge = (c, display, values) => {
     c.strokeStyle = fg;
     c.lineWidth = 1;
 
-    drawMultiLineText(c, {
-        text: formatDisplayText(display.formatter, values),
-        text2: display.formatter2
-            ? formatDisplayText(display.formatter2, values)
-            : undefined,
-        text3: display.formatter3
-            ? formatDisplayText(display.formatter3, values)
-            : undefined,
+    const text = formatValues(display, values, display.formatter.length);
+    // TODO: cache this
+    const styles = getTextStyles({
         size: display.size,
-        size2: display.size2,
-        size3: display.size3,
-        color_fg: formatDisplayColor(display.color_fg, values),
-        color_fg2: formatDisplayColor(display.color_fg2, values),
-        color_fg3: formatDisplayColor(display.color_fg3, values),
+        color_fg: formatColors(
+            "color_fg",
+            display,
+            values,
+            display.formatter.length,
+        ),
     });
+    renderMultiLineText(c, text, styles, {});
 };
 
 const renderMeterGauge = (c, display, values) => {
@@ -415,7 +432,7 @@ const renderMeterGauge = (c, display, values) => {
         reading = min;
     }
 
-    const text = formatDisplayText(display.formatter, values);
+    const text = formatValues(display, values);
 
     // draw background
     c.fillStyle = bg;
@@ -704,7 +721,7 @@ const renderHSI = (c, display, values) => {
         c.lineTo(dx * f, dy * f);
     }
 
-    c.font = `14px '${labelFont}'`;
+    c.font = `16px '${labelFont}'`;
     c.fillText("N", -5, -0.5 * r);
 
     if (isNumber(hdg_bug)) {
@@ -762,10 +779,59 @@ const renderHSI = (c, display, values) => {
     c.stroke();
 };
 
+const renderBarGauge = (c, display, values) => {
+    const bg = "black";
+    const fg = "white";
+    const w = c.canvas.width;
+    const h = c.canvas.height;
+
+    // draw background
+    c.fillStyle = bg;
+    c.fillRect(0, 0, w, h);
+    c.fillStyle = fg;
+    c.strokeStyle = fg;
+
+    const slotWidth = 10;
+    const slotHeight = 60;
+    const barWidth = slotWidth * 0.6;
+    const barD = (slotWidth - barWidth) / 2;
+
+    const text = formatValues(display, values, 4);
+    const label = getLabelText(display);
+    // TODO: cache this
+    const { font, color_fg } = getTextStyles({
+        size: [12, 12, 12, 12],
+        color_fg: formatColors("color_fg", display, values, 4),
+    });
+
+    c.rotate(Math.PI / 2);
+
+    let y = -(w - (slotWidth + 10) * text.length) / 2;
+    let x = (h - slotHeight) / 2;
+    for (let i = 0; i < text.length; i++) {
+        c.lineWidth = 1;
+        c.strokeRect(x, y - barWidth, slotHeight, barWidth);
+        const r = Math.max(Math.min(values[i], 1), 0);
+        c.fillStyle = color_fg[i] ? color_fg[i] : fg;
+        const xx = x + slotHeight * (1 - r);
+        c.fillRect(xx + 1, y - barWidth + 1, slotHeight * r - 1, barWidth - 1);
+        c.lineWidth = 2;
+        c.moveTo(xx + 1, y + 2);
+        c.lineTo(xx + 1, y - barWidth - 2);
+        c.stroke();
+        c.fillStyle = fg;
+        c.font = font[i];
+        const t = `${label[i]} ${text[i]}`;
+        c.fillText(t, x, y - slotWidth + 2);
+        y -= slotWidth + 10;
+    }
+};
+
 const drawGauge = async (key, label, values) => {
     const types = {
         meter: renderMeterGauge,
         text: renderTextGauge,
+        bar: renderBarGauge,
         attitude: renderAttitudeIndicator,
         ias: renderIAS,
         alt: renderAltimeter,

@@ -5,20 +5,20 @@
 #
 # Page 0
 - left:
-    - text: Thr.
+    - label: Thr.
       inc:
         xplane_cmd: sim/engines/throttle_up
       dec:
         xplane_cmd: sim/engines/throttle_down
       pressed:
         xplane_cmd: sim/engines/throttle_full
-    - text: Prop
+    - label: Prop
       color_bg: '#0000ff'
       inc:
         xplane_cmd: sim/engines/prop_up
       dec:
         xplane_cmd: sim/engines/prop_down
-    - text: Mix.
+    - label: Mix.
       inc:
         xplane_cmd: sim/engines/mixture_up
       dec:
@@ -27,19 +27,19 @@
         xplane_cmd: sim/engines/mixture_max
       color_bg: '#ff0000'
   right:
-    - text: HDG
+    - label: HDG
       inc:
         xplane_cmd: sim/GPS/g1000n1_hdg_up
       dec:
         xplane_cmd: sim/GPS/g1000n1_hdg_down
       pressed:
         xplane_cmd: sim/GPS/g1000n1_hdg_sync
-    - text: ALT
+    - label: ALT
       inc:
         xplane_cmd: sim/GPS/g1000n1_alt_inner_up
       dec:
         xplane_cmd: sim/GPS/g1000n1_alt_inner_down
-    - text: CRS
+    - label: CRS
       inc:
         xplane_cmd: sim/GPS/g1000n1_crs_up
       dec:
@@ -48,23 +48,28 @@
         xplane_cmd: sim/GPS/g1000n1_crs_sync
   keys:
     - display:
-        type: meter
+        type: bar
         freq: 6
         source:
+          - xplane_dataref: sim/cockpit2/engine/actuators/throttle_ratio[0]
+          - xplane_dataref: sim/cockpit2/engine/actuators/prop_ratio[0]
+          - xplane_dataref: sim/cockpit2/engine/actuators/mixture_ratio[0]
           - xplane_dataref: sim/flightmodel/controls/flaprat
-        min: 0
-        max: 1
-        stops:
-          - color: 'gray'
-            value_begin: 0
-            value_end: 0.2
-          - color: 'gray'
-            value_begin: 0.4
-            value_end: 0.6
-          - color: 'gray'
-            value_begin: 0.8
-            value_end: 1
-        formatter: '${$d[0] != null ? ($d[0] * 100).toFixed(0) : "X"}%'
+        label:
+          - T
+          - P
+          - M
+          - F
+        formatter:
+          - '${$d[0] != null ? ($d[0] * 100).toFixed(0) : "X"}%'
+          - '${$d[1] != null ? ($d[1] * 100).toFixed(0) : "X"}%'
+          - '${$d[2] != null ? ($d[2] * 100).toFixed(0) : "X"}%'
+          - '${$d[3] != null ? ($d[3] * 100).toFixed(0) : "X"}%'
+        color_fg:
+          - white
+          - blue
+          - red
+          - gray
     - display:
         type: meter
         freq: 1,
@@ -94,8 +99,9 @@
           - color: 'red'
             value_begin: 2700
             value_end: 3000
-    - text: Flaps
-      text2: Up
+    - label:
+        - Flaps
+        - Up
       pressed:
         xplane_cmd: sim/flight_controls/flaps_up
     - display:
@@ -130,8 +136,9 @@
           - xplane_dataref: sim/cockpit2/gauges/indicators/altitude_ft_pilot # alt
           - xplane_dataref: sim/cockpit2/gauges/indicators/vvi_fpm_pilot # vs
           - xplane_dataref: sim/cockpit/autopilot/altitude
-    - text: Flaps
-      text2: Down
+    - label:
+        - Flaps
+        - Down
       pressed:
         xplane_cmd: sim/flight_controls/flaps_down
     - display:
@@ -139,10 +146,12 @@
         source:
           - xplane_dataref: sim/cockpit/autopilot/autopilot_state
           - xplane_dataref: sim/cockpit2/radios/actuators/HSI_source_select_pilot
-        formatter: '${($d[0] & 2) ? "HDG" : (($d[0] & 0x200) ? "NAV" : "ROL")} ${($d[0] & 0x10) ? "VS" : (($d[0] & 0x40) ? "FLC" : (($d[0] & 0x4000) ? "ALT" : "PIT"))}'
-        formatter2: '${$d[1] == 0 ? "NAV1" : ($d[1] == 1 ? "NAV2" : ($d[1] == 2 ? "GPS" : "X"))}'
-        size: 16
-        size2: 16
+        formatter:
+          - '${($d[0] & 2) ? "HDG" : (($d[0] & 0x200) ? "NAV" : "ROL")} ${($d[0] & 0x10) ? "VS" : (($d[0] & 0x40) ? "FLC" : (($d[0] & 0x4000) ? "ALT" : "PIT"))}'
+          - '${$d[1] == 0 ? "NAV1" : ($d[1] == 1 ? "NAV2" : ($d[1] == 2 ? "GPS" : "X"))}'
+        size:
+          - 16
+          - 16
     - display:
         type: hsi
         freq: 12
@@ -183,32 +192,37 @@
           - xplane_dataref: sim/cockpit/radios/gps_course_degtm
           - xplane_dataref: sim/cockpit2/radios/actuators/nav1_obs_deg_mag_pilot
           - xplane_dataref: sim/cockpit2/radios/actuators/nav2_obs_deg_mag_pilot
-        formatter: '${$d[0] != null ? $d[0].toFixed(0).padStart(3, "0") : "xxx"}'
-        formatter2: 'HDG ${$d[1] != null ? $d[1].toFixed(0).padStart(3, "0") : "xxx"}'
-        formatter3: 'CRS ${($d[2] == 2 ? $d[3] : ($d[2] == 0 ? $d[4] : ($d[2] == 1 ? $d[5] : 0))).toFixed(0).padStart(3, "0")}'
-        color_fg2: 'cyan'
-        color_fg3: '${($d[2] == 2 ? "magenta" : ($d[2] == 0 ? "#2dfe54" : ($d[2] == 1 ? "#2dfe54" : "magenta")))}'
-        size2: 16
-        size3: 16
-    - text: Brake
+        formatter:
+          - '${$d[0] != null ? $d[0].toFixed(0).padStart(3, "0") : "000"}'
+          - 'HDG ${$d[1] != null ? $d[1].toFixed(0).padStart(3, "0") : "000"}'
+          - 'CRS ${($d[2] == 2 ? $d[3] : ($d[2] == 0 ? $d[4] : ($d[2] == 1 ? $d[5] : 0))).toFixed(0).padStart(3, "0")}'
+        color_fg:
+          - white
+          - cyan
+          - '${($d[2] == 2 ? "magenta" : ($d[2] == 0 ? "#2dfe54" : ($d[2] == 1 ? "#2dfe54" : "magenta")))}'
+        size:
+          - null
+          - 16
+          - 16
+    - label: Brake
       pressed:
         xplane_cmd: sim/flight_controls/brakes_toggle_regular
 
 # Page 1
 - right:
-    - text: HDG
+    - label: HDG
       inc:
         xplane_cmd: sim/GPS/g1000n1_hdg_up
       dec:
         xplane_cmd: sim/GPS/g1000n1_hdg_down
       pressed:
         xplane_cmd: sim/GPS/g1000n1_hdg_sync
-    - text: ALT
+    - label: ALT
       inc:
         xplane_cmd: sim/GPS/g1000n1_alt_inner_up
       dec:
         xplane_cmd: sim/GPS/g1000n1_alt_inner_down
-    - text: CRS
+    - label: CRS
       inc:
         xplane_cmd: sim/GPS/g1000n1_crs_up
       dec:
@@ -216,40 +230,40 @@
       pressed:
         xplane_cmd: sim/GPS/g1000n1_crs_sync
   keys:
-    - text: AP
+    - label: AP
       pressed:
         xplane_cmd: sim/GPS/g1000n1_ap
-    - text: FD
+    - label: FD
       pressed:
         xplane_cmd: sim/GPS/g1000n1_fd
-    - text: HDG
+    - label: HDG
       pressed:
         xplane_cmd: sim/GPS/g1000n1_hdg
-    - text: ALT
+    - label: ALT
       pressed:
         xplane_cmd: sim/GPS/g1000n1_alt
-    - text: NAV
+    - label: NAV
       pressed:
         xplane_cmd: sim/GPS/g1000n1_nav
-    - text: VNV
+    - label: VNV
       pressed:
         xplane_cmd: sim/GPS/g1000n1_vnv
-    - text: APR
+    - label: APR
       pressed:
         xplane_cmd: sim/GPS/g1000n1_apr
-    - text: BC
+    - label: BC
       pressed:
         xplane_cmd: sim/GPS/g1000n1_bc
-    - text: VS
+    - label: VS
       pressed:
         xplane_cmd: sim/GPS/g1000n1_vs
-    - text: UP
+    - label: UP
       pressed:
         xplane_cmd: sim/GPS/g1000n1_nose_up
-    - text: FLC
+    - label: FLC
       pressed:
         xplane_cmd: sim/GPS/g1000n1_flc
-    - text: DN
+    - label: DN
       pressed:
         xplane_cmd: sim/GPS/g1000n1_nose_down
   color: '#1a62fd'
@@ -257,7 +271,7 @@
 # Page 2
 - left:
     # left knob labels
-    - text: FMS out
+    - label: FMS out
       size: 20
       inc:
         xplane_cmd: sim/GPS/g1000n1_fms_outer_up
@@ -265,7 +279,7 @@
         xplane_cmd: sim/GPS/g1000n1_fms_outer_down
       pressed:
         xplane_cmd: sim/GPS/g1000n1_cursor
-    - text: FMS in
+    - label: FMS in
       size: 20
       inc:
         xplane_cmd: sim/GPS/g1000n1_fms_inner_up
@@ -273,14 +287,14 @@
         xplane_cmd: sim/GPS/g1000n1_fms_inner_down
       pressed:
         xplane_cmd: sim/GPS/g1000n1_cursor
-    - text: BARO
+    - label: BARO
       inc:
         xplane_cmd: sim/GPS/g1000n1_baro_up
       dec:
         xplane_cmd: sim/GPS/g1000n1_baro_down
   right:
     # right knob labels
-    - text: FMS out
+    - label: FMS out
       size: 20
       inc:
         xplane_cmd: sim/GPS/g1000n3_fms_outer_up
@@ -288,7 +302,7 @@
         xplane_cmd: sim/GPS/g1000n3_fms_outer_down
       pressed:
         xplane_cmd: sim/GPS/g1000n3_cursor
-    - text: FMS in
+    - label: FMS in
       size: 20
       inc:
         xplane_cmd: sim/GPS/g1000n3_fms_inner_up
@@ -299,47 +313,47 @@
     -
   keys:
     # 12 touchable keys from left to right, top to bottom
-    - text: -D->
+    - label: -D->
       pressed:
         xplane_cmd: sim/GPS/g1000n1_direct
-    - text: MENU
+    - label: MENU
       pressed:
         xplane_cmd: sim/GPS/g1000n1_menu
-    - text: -D->
+    - label: -D->
       pressed:
         xplane_cmd: sim/GPS/g1000n3_direct
-    - text: MENU
+    - label: MENU
       pressed:
         xplane_cmd: sim/GPS/g1000n3_menu
-    - text: FPL
+    - label: FPL
       pressed:
         xplane_cmd: sim/GPS/g1000n1_fpl
-    - text: PROC
+    - label: PROC
       pressed:
         xplane_cmd: sim/GPS/g1000n1_proc
-    - text: FPL
+    - label: FPL
       pressed:
         xplane_cmd: sim/GPS/g1000n3_fpl
-    - text: PROC
+    - label: PROC
       pressed:
         xplane_cmd: sim/GPS/g1000n3_proc
-    - text: CLR
+    - label: CLR
       pressed:
         xplane_cmd: sim/GPS/g1000n1_clr
-    - text: ENT
+    - label: ENT
       pressed:
         xplane_cmd: sim/GPS/g1000n1_ent
-    - text: CLR
+    - label: CLR
       pressed:
         xplane_cmd: sim/GPS/g1000n3_clr
-    - text: ENT
+    - label: ENT
       pressed:
         xplane_cmd: sim/GPS/g1000n3_ent
   color: 'yellow'
 
 # Page 3
 - left:
-    - text: COM in
+    - label: COM in
       size: 20
       inc:
         xplane_cmd: sim/GPS/g1000n1_com_inner_up
@@ -347,7 +361,7 @@
         xplane_cmd: sim/GPS/g1000n1_com_inner_down
       pressed:
         xplane_cmd: sim/GPS/g1000n1_com12
-    - text: COM out
+    - label: COM out
       size: 20
       inc:
         xplane_cmd: sim/GPS/g1000n1_com_outer_up
@@ -357,7 +371,7 @@
         xplane_cmd: sim/GPS/g1000n1_com12
     - ''
   right:
-    - text: NAV in
+    - label: NAV in
       size: 20
       inc:
         xplane_cmd: sim/GPS/g1000n1_nav_inner_up
@@ -365,7 +379,7 @@
         xplane_cmd: sim/GPS/g1000n1_nav_inner_down
       pressed:
         xplane_cmd: sim/GPS/g1000n1_nav12
-    - text: NAV out
+    - label: NAV out
       size: 20
       inc:
         xplane_cmd: sim/GPS/g1000n1_nav_outer_up
@@ -375,28 +389,30 @@
         xplane_cmd: sim/GPS/g1000n1_nav12
     - ''
   keys:
-    - text: <-COM
+    - label: <-COM
       pressed:
         xplane_cmd: sim/GPS/g1000n1_com_ff
-    - text: <-NAV
+    - label: <-NAV
       pressed:
         xplane_cmd: sim/GPS/g1000n1_nav_ff
     - ''
     - ''
-    - text: COM1
-      text2: Mic
+    - label:
+        - COM1
+        - Mic
       pressed:
         xplane_cmd: sim/audio_panel/transmit_audio_com1
-    - text: COM1
+    - label: COM1
       pressed:
         xplane_cmd: sim/audio_panel/monitor_audio_com1
     - ''
     - ''
-    - text: COM2
-      text2: Mic
+    - label:
+        - COM2
+        - Mic
       pressed:
         xplane_cmd: sim/audio_panel/transmit_audio_com2
-    - text: COM2
+    - label: COM2
       pressed:
         xplane_cmd: sim/audio_panel/monitor_audio_com2
     - ''
