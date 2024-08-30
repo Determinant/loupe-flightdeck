@@ -5,6 +5,7 @@
 #
 # Page 0
 - left:
+    # left knob labels from top to bottom
     - label: Thr.
       inc:
         xplane_cmd: sim/engines/throttle_up
@@ -27,6 +28,7 @@
         xplane_cmd: sim/engines/mixture_max
       color_bg: '#ff0000'
   right:
+    # right knob labels
     - label: HDG
       inc:
         xplane_cmd: sim/GPS/g1000n1_hdg_up
@@ -47,8 +49,13 @@
       pressed:
         xplane_cmd: sim/GPS/g1000n1_crs_sync
   keys:
+    # 12 touchable keys from left to right, top to bottom
     - display:
+        # a "display" key only shows some live data, rather than functioning as a pressable key
+        # "type" indicates which template for the display to use (one of meter/text/bar/attitude/ias/alt/hsi)
+        # here, "bar" is a bar chart that draws several (practically <= 4) bars from left to right showing some stats
         type: bar
+        # update frequency of the display
         freq: 6
         source:
           - xplane_dataref: sim/cockpit2/engine/actuators/throttle_ratio[0]
@@ -60,29 +67,36 @@
           - P
           - M
           - F
+        # font size for each bar
         size:
           - 12
           - 12
           - 12
           - 12
-        formatter:
+        # value expression written in a JS template literal (https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Template_literals)
+        # for each bar, should result in [0, 1]. Note $d is the array that
+        # contains the values from "source"
+        values:
           - '${$d[0] != null ? ($d[0] * 100).toFixed(0) : "X"}%'
           - '${$d[1] != null ? ($d[1] * 100).toFixed(0) : "X"}%'
           - '${$d[2] != null ? ($d[2] * 100).toFixed(0) : "X"}%'
           - '${$d[3] != null ? ($d[3] * 100).toFixed(0) : "X"}%'
+        # bar colors
         color_fg:
           - white
           - blue
           - red
           - gray
     - display:
+        # meter is a arc-style display that could be used to show RPM/power/speed, etc.
         type: meter
         freq: 6
         source:
           - xplane_dataref: sim/cockpit2/engine/indicators/MPR_in_hg[0]
         min: 10
         max: 30
-        formatter: '${$d[0] != null ? $d[0].toFixed(1) : "X"}'
+        values: '${$d[0] != null ? $d[0].toFixed(1) : "X"}'
+        # stops define the segmented arcs that the needle can point to at different angles
         stops:
           - color: 'green'
             value_begin: 13
@@ -120,11 +134,11 @@
         source:
           - xplane_dataref: sim/cockpit/gyros/the_ind_ahars_pilot_deg # pitch
           - xplane_dataref: sim/cockpit/gyros/phi_ind_ahars_pilot_deg # roll
-          - xplane_dataref: sim/cockpit2/radios/actuators/HSI_source_select_pilot
+          - xplane_dataref: sim/cockpit2/radios/actuators/HSI_source_select_pilot # navigation source for HSI
           - xplane_dataref: sim/cockpit2/radios/indicators/hsi_vdef_dots_pilot
           - xplane_dataref: sim/cockpit2/radios/indicators/hsi_flag_glideslope_pilot
-
-        src:
+        # navs contains the mapping from the HSI source value (source[2]) to the index in source[] array
+        navs:
           2:
             def: 3
             received: 4
@@ -138,9 +152,9 @@
         type: alt
         freq: 24
         source:
-          - xplane_dataref: sim/cockpit2/gauges/indicators/altitude_ft_pilot # alt
-          - xplane_dataref: sim/cockpit2/gauges/indicators/vvi_fpm_pilot # vs
-          - xplane_dataref: sim/cockpit/autopilot/altitude
+          - xplane_dataref: sim/cockpit2/gauges/indicators/altitude_ft_pilot # altitude
+          - xplane_dataref: sim/cockpit2/gauges/indicators/vvi_fpm_pilot # vertical speed
+          - xplane_dataref: sim/cockpit/autopilot/altitude # altitude bug
     - label:
         - Flaps
         - Down
@@ -151,7 +165,7 @@
         source:
           - xplane_dataref: sim/cockpit/autopilot/autopilot_state
           - xplane_dataref: sim/cockpit2/radios/actuators/HSI_source_select_pilot
-        formatter:
+        values:
           - '${($d[0] & 2) ? "HDG" : (($d[0] & 0x200) ? "NAV" : "ROL")} ${($d[0] & 0x10) ? "VS" : (($d[0] & 0x40) ? "FLC" : (($d[0] & 0x4000) ? "ALT" : "PIT"))}'
           - '${$d[1] == 0 ? "NAV1" : ($d[1] == 1 ? "NAV2" : ($d[1] == 2 ? "GPS" : "X"))}'
         size:
@@ -161,16 +175,14 @@
         type: hsi
         freq: 12
         source:
-          - xplane_dataref: sim/cockpit2/gauges/indicators/heading_AHARS_deg_mag_pilot
-          - xplane_dataref: sim/cockpit2/autopilot/heading_dial_deg_mag_pilot
-          - xplane_dataref: sim/cockpit2/radios/actuators/HSI_source_select_pilot
+          - xplane_dataref: sim/cockpit2/gauges/indicators/heading_AHARS_deg_mag_pilot # current heading
+          - xplane_dataref: sim/cockpit2/autopilot/heading_dial_deg_mag_pilot # heading bug
+          - xplane_dataref: sim/cockpit2/radios/actuators/HSI_source_select_pilot # navigation source for HSI
           - xplane_dataref: sim/cockpit2/radios/indicators/hsi_hdef_dots_pilot
           - xplane_dataref: sim/cockpit2/radios/indicators/hsi_display_horizontal_pilot
           - xplane_dataref: sim/cockpit/radios/gps_course_degtm
           - xplane_dataref: sim/cockpit2/radios/actuators/nav1_obs_deg_mag_pilot
           - xplane_dataref: sim/cockpit2/radios/actuators/nav2_obs_deg_mag_pilot
-        hdg: 0
-        src: 1
         navs:
           2:
             crs: 5
@@ -197,7 +209,7 @@
           - xplane_dataref: sim/cockpit/radios/gps_course_degtm
           - xplane_dataref: sim/cockpit2/radios/actuators/nav1_obs_deg_mag_pilot
           - xplane_dataref: sim/cockpit2/radios/actuators/nav2_obs_deg_mag_pilot
-        formatter:
+        values:
           - '${$d[0] != null ? $d[0].toFixed(0).padStart(3, "0") : "000"}'
           - 'HDG ${$d[1] != null ? $d[1].toFixed(0).padStart(3, "0") : "000"}'
           - 'CRS ${($d[2] == 2 ? $d[3] : ($d[2] == 0 ? $d[4] : ($d[2] == 1 ? $d[5] : 0))).toFixed(0).padStart(3, "0")}'
@@ -275,7 +287,6 @@
 
 # Page 2
 - left:
-    # left knob labels
     - label: FMS out
       size: 20
       inc:
@@ -298,7 +309,6 @@
       dec:
         xplane_cmd: sim/GPS/g1000n1_baro_down
   right:
-    # right knob labels
     - label: FMS out
       size: 20
       inc:
@@ -317,7 +327,6 @@
         xplane_cmd: sim/GPS/g1000n3_cursor
     -
   keys:
-    # 12 touchable keys from left to right, top to bottom
     - label: -D->
       pressed:
         xplane_cmd: sim/GPS/g1000n1_direct
@@ -374,7 +383,7 @@
         xplane_cmd: sim/GPS/g1000n1_com_outer_down
       pressed:
         xplane_cmd: sim/GPS/g1000n1_com12
-    - ''
+    -
   right:
     - label: NAV in
       size: 20
@@ -392,7 +401,7 @@
         xplane_cmd: sim/GPS/g1000n1_nav_outer_down
       pressed:
         xplane_cmd: sim/GPS/g1000n1_nav12
-    - ''
+    -
   keys:
     - label: <-COM
       pressed:
@@ -400,8 +409,8 @@
     - label: <-NAV
       pressed:
         xplane_cmd: sim/GPS/g1000n1_nav_ff
-    - ''
-    - ''
+    -
+    -
     - label:
         - COM1
         - Mic
@@ -410,8 +419,8 @@
     - label: COM1
       pressed:
         xplane_cmd: sim/audio_panel/monitor_audio_com1
-    - ''
-    - ''
+    -
+    -
     - label:
         - COM2
         - Mic
@@ -420,6 +429,6 @@
     - label: COM2
       pressed:
         xplane_cmd: sim/audio_panel/monitor_audio_com2
-    - ''
-    - ''
+    -
+    -
   color: 'white'

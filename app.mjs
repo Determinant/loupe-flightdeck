@@ -1,15 +1,23 @@
 #!/usr/bin/env node
 
-//import { registerFont } from "canvas";
-//registerFont("./ocr-a-ext.ttf", { family: "OCR A Extended" });
+import { registerFont } from "canvas";
+if (process.platform == "linux") {
+    console.warn(
+        "node-canvas does not support directly using font file in Linux (see https://github.com/Automattic/node-canvas/issues/2097#issuecomment-1803950952), please copy ./ocr-a-ext.ttf in this folder to your local font folder (~/.fonts/) or install it system-wide.",
+    );
+} else {
+    registerFont(`${import.meta.dirname}/ocr-a-ext.ttf`, {
+        family: "OCR A Extended",
+    });
+}
 
 import { discover, HAPTIC } from "loupedeck";
 import { readFile } from "fs/promises";
 import { parse } from "yaml";
 import { XPlane } from "./xplane.mjs";
 
-const labelFont = "OCR A Extended";
-const labelSize = 22;
+const defaultFont = "OCR A Extended";
+const defaultTextSize = 22;
 const xplane = new XPlane();
 
 if (process.argv.length > 3) {
@@ -78,10 +86,12 @@ const getTextStyles = (conf) => {
             ? conf.color_fg
             : [conf.color_fg];
         for (let i = 0; i < size.length; i++) {
-            font.push(`${size[i] ? size[i] : labelSize}px '${labelFont}'`);
+            font.push(
+                `${size[i] ? size[i] : defaultTextSize}px '${defaultFont}'`,
+            );
         }
     } else {
-        font.push(`${labelSize}px '${labelFont}'`);
+        font.push(`${defaultTextSize}px '${defaultFont}'`);
     }
     return {
         font,
@@ -113,9 +123,7 @@ const formatValues = (conf, values, n = 1) => {
 
     let last;
     let text = [];
-    const formatter = Array.isArray(conf.formatter)
-        ? conf.formatter
-        : [conf.formatter];
+    const formatter = Array.isArray(conf.values) ? conf.values : [conf.values];
     for (let i = 0; i < n; i++) {
         let fmt = formatter[i] || last;
         text.push(f(fmt));
@@ -289,7 +297,7 @@ const renderTextGauge = (c, display, values) => {
     c.fillStyle = bg;
     c.fillRect(0, 0, w, h);
 
-    const text = formatValues(display, values, display.formatter.length);
+    const text = formatValues(display, values, display.values.length);
     // TODO: cache this
     const styles = getTextStyles({
         size: display.size,
@@ -297,7 +305,7 @@ const renderTextGauge = (c, display, values) => {
             "color_fg",
             display,
             values,
-            display.formatter.length,
+            display.values.length,
         ),
     });
     renderMultiLineText(c, 0, 0, w, h, text, styles, {});
@@ -364,8 +372,8 @@ const renderMeterGauge = (c, display, values) => {
 
     // show the value text
     const text = formatValues(display, values);
-    const size = display.font ? display.font : labelSize;
-    c.font = `${size * 0.9}px '${labelFont}'`;
+    const { font } = getTextStyles(display);
+    c.font = font[0];
     c.fillStyle = fg;
     const m = c.measureText(text);
     c.fillText(text, (w - m.width) / 2, h / 2 + 25);
@@ -381,9 +389,12 @@ const renderAttitudeIndicator = (c, display, values) => {
     c.fillStyle = bg;
     c.fillRect(0, 0, w, h);
 
-    const pitch = values[0];
-    const roll = values[1];
-    const src = display.src[values[2]];
+    const pitch = values[0] || 0;
+    const roll = values[1] || 0;
+    let src = isObject(display.navs) ? display.navs[values[2]] : null;
+    if (!isObject(src)) {
+        src = null;
+    }
     const cdi = src ? values[src.def] : null;
     const received = src ? values[src.received] : null;
 
@@ -412,7 +423,7 @@ const renderAttitudeIndicator = (c, display, values) => {
     c.moveTo(-0.75 * w, 0);
     c.lineTo(0.75 * w, 0);
     c.fillStyle = fg;
-    c.font = `10px ${labelFont}`;
+    c.font = `10px ${defaultFont}`;
     const drawMark = (i) => {
         const y = longSep * i;
         const sign = i < 0 ? -1 : 1;
@@ -460,7 +471,7 @@ const renderAttitudeIndicator = (c, display, values) => {
     }
     c.stroke();
 
-    if (received == 0) {
+    if (isNumber(received) && received != 0) {
         // draw CDI diamond
         const cdi_y = 13 * cdi;
         const cdi_h = 7;
@@ -523,13 +534,13 @@ const renderMechanicalDisplay = (
     right = true,
     wideWinWidth = 2,
     lowDigitStep = 1,
-    size = labelSize,
+    size = defaultTextSize,
 ) => {
     const bg = "black";
     const fg = "white";
 
     c.save();
-    c.font = `${size}px '${labelFont}'`;
+    c.font = `${size}px '${defaultFont}'`;
     const m = c.measureText("x");
     const y0 =
         h / 2 + (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2;
@@ -636,7 +647,7 @@ const renderAltimeter = (c, display, values) => {
     renderMechanicalDisplay(c, w, h, values[0], 5, false, 2, 20, 18);
 
     // draw floating vsi window
-    const vsi = values[1];
+    const vs = values[1];
     const vsiBgX = w / 2 + 4;
     c.fillRect(vsiBgX, 0, w - vsiBgX, h);
     c.fillStyle = "#000";
@@ -644,20 +655,20 @@ const renderAltimeter = (c, display, values) => {
     const vsiX = vsiBgX + 2;
     const vsiY =
         (1 -
-            (Math.min(Math.max(isNumber(vsi) ? vsi : 0, -2000), 2000) + 2000) /
+            (Math.min(Math.max(isNumber(vs) ? vs : 0, -2000), 2000) + 2000) /
                 4000) *
         (h - vsiH);
     c.fillRect(vsiX, vsiY, w - vsiX, vsiH);
     c.fillStyle = fg;
-    if (isNumber(vsi)) {
-        c.font = `12px '${labelFont}'`;
-        c.fillText(Math.trunc(vsi / 10) * 10, vsiX + 2, vsiY + vsiH * 0.8);
+    if (isNumber(vs)) {
+        c.font = `12px '${defaultFont}'`;
+        c.fillText(Math.trunc(vs / 10) * 10, vsiX + 2, vsiY + vsiH * 0.8);
     }
-    const selected = values[2];
-    if (isNumber(selected)) {
-        c.fillStyle = "#6697ff";
-        c.font = `14px '${labelFont}'`;
-        c.fillText(selected, 15, 18);
+    const altB = values[2];
+    if (isNumber(altB)) {
+        c.fillStyle = "cyan";
+        c.font = `14px '${defaultFont}'`;
+        c.fillText(altB, 15, 18);
     }
 };
 
@@ -682,14 +693,16 @@ const renderHSI = (c, display, values) => {
 
     const hdg = deg2Rad(values[0]);
     const hdgB = deg2Rad(values[1]);
-    const src = display.navs[values[2]];
+    let src = isObject(display.navs) ? display.navs[values[2]] : null;
+    if (!isObject(src)) {
+        src = null;
+    }
     const crs = src ? deg2Rad(values[src.crs]) : null;
     let def = src ? Math.min(Math.max(values[src.def], -3), 3) : null;
-    const received = src ? values[src.received] : null;
-
     if (isNaN(def)) {
         def = 0;
     }
+    const received = src ? values[src.received] : null;
     const polarXY = (theta, r) => {
         const t = -theta - Math.PI / 2;
         const dx = r * Math.cos(t);
@@ -711,7 +724,7 @@ const renderHSI = (c, display, values) => {
     }
 
     c.fillStyle = fg;
-    c.font = `16px '${labelFont}'`;
+    c.font = `16px '${defaultFont}'`;
     c.fillText("N", -5, -0.5 * r);
 
     if (isNumber(hdgB)) {
@@ -748,7 +761,8 @@ const renderHSI = (c, display, values) => {
         c.lineWidth = 3;
         c.strokeStyle = src.color ? src.color : "magenta";
 
-        if (received != 0) {
+        if (isNumber(received) && received != 0) {
+            // draw CDI needle
             const cdiX = 13 * def;
             c.moveTo(cdiX, -(cdiR - 1));
             c.lineTo(cdiX, cdiR - 1);
@@ -783,12 +797,17 @@ const renderBarGauge = (c, display, values) => {
     const slotHeight = 60;
     const barWidth = slotWidth * 0.6;
 
-    const text = formatValues(display, values, 4);
+    const text = formatValues(display, values, display.values.length);
     const label = getLabels(display);
     // TODO: cache this
     const { font, color_fg } = getTextStyles({
         size: display.size,
-        color_fg: formatColors("color_fg", display, values, 4),
+        color_fg: formatColors(
+            "color_fg",
+            display,
+            values,
+            display.values.length,
+        ),
     });
 
     c.rotate(Math.PI / 2);
