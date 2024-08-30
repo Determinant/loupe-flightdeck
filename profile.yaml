@@ -60,6 +60,11 @@
           - P
           - M
           - F
+        size:
+          - 12
+          - 12
+          - 12
+          - 12
         formatter:
           - '${$d[0] != null ? ($d[0] * 100).toFixed(0) : "X"}%'
           - '${$d[1] != null ? ($d[1] * 100).toFixed(0) : "X"}%'

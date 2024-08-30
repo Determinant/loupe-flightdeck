@@ -800,7 +800,7 @@ const renderBarGauge = (c, display, values) => {
     const label = getLabelText(display);
     // TODO: cache this
     const { font, color_fg } = getTextStyles({
-        size: [12, 12, 12, 12],
+        size: display.size,
         color_fg: formatColors("color_fg", display, values, 4),
     });
 
