@@ -1,6 +1,6 @@
 {
   "name": "loupe-flightdeck",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Turn your stream deck into a flight deck!",
   "repository": {
     "type": "git",
@@ -14,5 +14,10 @@
     "loupedeck": "^6.0.1",
     "yaml": "^2.5.0"
   },
-  "bin": "./app.mjs"
+  "bin": "./app.mjs",
+  "devDependencies": {
+    "@eslint/js": "^9.9.1",
+    "eslint": "^9.9.1",
+    "globals": "^15.9.0"
+  }
 }
