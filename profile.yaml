@@ -77,19 +77,19 @@
           - gray
     - display:
         type: meter
-        freq: 1,
+        freq: 6
         source:
           - xplane_dataref: sim/cockpit2/engine/indicators/MPR_in_hg[0]
         min: 10
         max: 30
-        formatter: '${$d[0] != null ? $d[0].toFixed(2) : "X"}'
+        formatter: '${$d[0] != null ? $d[0].toFixed(1) : "X"}'
         stops:
           - color: 'green'
             value_begin: 13
             value_end: 30
     - display:
         type: meter
-        freq: 1,
+        freq: 6
         source:
           - xplane_dataref: sim/cockpit2/engine/indicators/engine_speed_rpm[0]
         min: 0

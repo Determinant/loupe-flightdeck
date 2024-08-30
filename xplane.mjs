@@ -82,7 +82,7 @@ export class XPlane {
         if (handler) {
             this.subscribed.push({ dataRef, handler, freq });
         }
-        console.info(`x-plane subscribed[${idx}] => ${dataRef}`);
+        console.info(`x-plane subscribed[${idx}] => ${dataRef} @${freq}Hz`);
         this._subscribeDataRef(idx);
     }
     //subscribeDataRef("sim/flightmodel/position/indicated_airspeed");
