@@ -259,7 +259,7 @@ const drawSideKnobs = async (side, confs, highlight) => {
                 h - y_padding * 2,
             );
             if (Array.isArray(confs) && confs.length > i && confs[i] != null) {
-                const { font, color_bg, color_fg } = getTextStyles(confs[i]);
+                const { font, color_bg } = getTextStyles(confs[i]);
                 const text = getLabels(confs[i]);
                 if (color_bg[0]) {
                     c.fillStyle = color_bg[0];
@@ -279,7 +279,7 @@ const drawSideKnobs = async (side, confs, highlight) => {
                     h,
                     w,
                     text,
-                    { font, color_bg, color_fg },
+                    { font, color_fg: [fg] },
                     confs[i],
                 );
                 c.resetTransform();
@@ -452,6 +452,7 @@ const renderAttitudeIndicator = (c, display, values) => {
     c.moveTo(30, 0);
     c.lineTo(10, 0);
     c.lineTo(10, 8);
+    c.rect(-1, -1, 2, 2);
     c.stroke();
 
     // draw vertical deflection dots
