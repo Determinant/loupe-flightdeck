@@ -457,7 +457,7 @@ const renderAttitudeIndicator = (c, display, values) => {
 
     // draw vertical deflection dots
     const pi2 = 2 * Math.PI;
-    const vdef_x = w - 10;
+    const vdefX = w - 10 - x0;
     const vdefR = 3;
 
     c.strokeStyle = "white";
@@ -465,25 +465,25 @@ const renderAttitudeIndicator = (c, display, values) => {
     c.beginPath();
     for (let i = -2; i <= 2; i++) {
         if (i != 0) {
-            const vdef_y = 13 * i;
-            c.moveTo(vdef_x + vdefR, vdef_y);
-            c.arc(vdef_x, vdef_y, vdefR, 0, pi2);
+            const vdefY = 13 * i;
+            c.moveTo(vdefX + vdefR, vdefY);
+            c.arc(vdefX, vdefY, vdefR, 0, pi2);
         }
     }
     c.stroke();
 
-    if (isNumber(received) && received != 0) {
+    if (isNumber(received) && received == 0) {
         // draw CDI diamond
-        const cdi_y = 13 * cdi;
-        const cdi_h = 7;
-        const cdi_w = 4;
+        const cdiY = 13 * cdi;
+        const cdiH = 7;
+        const cdiW = 4;
         c.fillStyle = "#2dfe54";
         c.strokeStyle = "black";
         c.beginPath();
-        c.moveTo(vdef_x, cdi_y + cdi_h);
-        c.lineTo(vdef_x - cdi_w, cdi_y);
-        c.lineTo(vdef_x, cdi_y - cdi_h);
-        c.lineTo(vdef_x + cdi_w, cdi_y);
+        c.moveTo(vdefX, cdiY + cdiH);
+        c.lineTo(vdefX - cdiW, cdiY);
+        c.lineTo(vdefX, cdiY - cdiH);
+        c.lineTo(vdefX + cdiW, cdiY);
         c.stroke();
         c.fill();
     }
