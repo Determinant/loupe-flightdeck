@@ -73,10 +73,16 @@
           - 12
           - 12
           - 12
+        exp:
+          - '$d'
+          - '1 - $d'
+          - '$d'
+          - '$d'
+
         # value expression written in a JS template literal (https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Template_literals)
         # for each bar, should result in [0, 1]. Note $d is the array that
-        # contains the values from "source"
-        values:
+        # contains the fmt from "source"
+        fmt:
           - '${$d[0] != null ? ($d[0] * 100).toFixed(0) : "X"}%'
           - '${$d[1] != null ? ($d[1] * 100).toFixed(0) : "X"}%'
           - '${$d[2] != null ? ($d[2] * 100).toFixed(0) : "X"}%'
@@ -95,7 +101,7 @@
           - xplane_dataref: sim/cockpit2/engine/indicators/MPR_in_hg[0]
         min: 10
         max: 30
-        values: '${$d[0] != null ? $d[0].toFixed(1) : "X"}'
+        fmt: '${$d[0] != null ? $d[0].toFixed(1) : "X"}'
         # stops define the segmented arcs that the needle can point to at different angles
         stops:
           - color: 'green'
@@ -165,7 +171,7 @@
         source:
           - xplane_dataref: sim/cockpit/autopilot/autopilot_state
           - xplane_dataref: sim/cockpit2/radios/actuators/HSI_source_select_pilot
-        values:
+        fmt:
           - '${($d[0] & 2) ? "HDG" : (($d[0] & 0x200) ? "NAV" : "ROL")} ${($d[0] & 0x10) ? "VS" : (($d[0] & 0x40) ? "FLC" : (($d[0] & 0x4000) ? "ALT" : "PIT"))}'
           - '${$d[1] == 0 ? "NAV1" : ($d[1] == 1 ? "NAV2" : ($d[1] == 2 ? "GPS" : "X"))}'
         size:
@@ -209,7 +215,7 @@
           - xplane_dataref: sim/cockpit/radios/gps_course_degtm
           - xplane_dataref: sim/cockpit2/radios/actuators/nav1_obs_deg_mag_pilot
           - xplane_dataref: sim/cockpit2/radios/actuators/nav2_obs_deg_mag_pilot
-        values:
+        fmt:
           - '${$d[0] != null ? $d[0].toFixed(0).padStart(3, "0") : "000"}'
           - 'HDG ${$d[1] != null ? $d[1].toFixed(0).padStart(3, "0") : "000"}'
           - 'CRS ${($d[2] == 2 ? $d[3] : ($d[2] == 0 ? $d[4] : ($d[2] == 1 ? $d[5] : 0))).toFixed(0).padStart(3, "0")}'

@@ -14,6 +14,7 @@ if (process.platform == "linux") {
 import { discover, HAPTIC } from "loupedeck";
 import { readFile } from "fs/promises";
 import { parse } from "yaml";
+import { queue } from "async";
 import { XPlane } from "./xplane.mjs";
 
 const defaultFont = "OCR A Extended";
@@ -32,12 +33,14 @@ const pages = parse(
 );
 
 const isNumber = (x) => {
-    return !isNaN(x);
+    return x != null && !isNaN(x);
 };
 
 const isObject = (obj) => {
     return obj != null && obj.constructor.name === "Object";
 };
+
+const deg2Rad = (x) => (x / 180) * Math.PI;
 
 // state of the controller
 let currentPage =
@@ -47,6 +50,11 @@ let highlighted = new Set();
 
 // detects and opens first connected device
 let device;
+
+// Render related variables
+let renderStop = [];
+let renderTasks;
+
 while (!device) {
     try {
         device = await discover();
@@ -110,12 +118,30 @@ const getLabels = (conf) => {
     return text;
 };
 
-const formatValues = (conf, values, n = 1) => {
+const transformValues = (conf, values) => {
+    const f = (exp, v) => Function("$d", `"use strict"; return(${exp});`)(v);
+    let last;
+    const exps = Array.isArray(conf.exp) ? conf.exp : [conf.exp];
+    let res = [];
+    for (let i = 0; i < values.length; i++) {
+        let exp = exps[i] || last;
+        if (exp) {
+            res[i] = f(exp, values[i]);
+        } else {
+            res[i] = values[i];
+        }
+        last = exp;
+    }
+    return res;
+};
+
+const formatValues = (conf, values_, n = 1) => {
+    const values = transformValues(conf, values_);
     const f = (fmt) => {
         if (fmt) {
             return Function("$d", `"use strict"; return(\`${fmt}\`);`)(values);
         }
-        if (isNaN(values[0])) {
+        if (!isNumber(values[0])) {
             return "X";
         }
         return values[0].toFixed(0).toString();
@@ -123,13 +149,13 @@ const formatValues = (conf, values, n = 1) => {
 
     let last;
     let text = [];
-    const formatter = Array.isArray(conf.values) ? conf.values : [conf.values];
+    const formatter = Array.isArray(conf.fmt) ? conf.fmt : [conf.fmt];
     for (let i = 0; i < n; i++) {
         let fmt = formatter[i] || last;
         text.push(f(fmt));
         last = fmt;
     }
-    return text;
+    return { text, values };
 };
 
 const formatColors = (color_name, conf, values, n = 1) => {
@@ -288,7 +314,7 @@ const drawSideKnobs = async (side, confs, highlight) => {
     });
 };
 
-const renderTextGauge = (c, display, values) => {
+const renderTextGauge = (c, display, values_) => {
     const bg = "black";
     const w = c.canvas.width;
     const h = c.canvas.height;
@@ -297,16 +323,12 @@ const renderTextGauge = (c, display, values) => {
     c.fillStyle = bg;
     c.fillRect(0, 0, w, h);
 
-    const text = formatValues(display, values, display.values.length);
+    const { text, values } = formatValues(display, values_, display.fmt.length);
+
     // TODO: cache this
     const styles = getTextStyles({
         size: display.size,
-        color_fg: formatColors(
-            "color_fg",
-            display,
-            values,
-            display.values.length,
-        ),
+        color_fg: formatColors("color_fg", display, values, values.length),
     });
     renderMultiLineText(c, 0, 0, w, h, text, styles, {});
 };
@@ -323,8 +345,8 @@ const renderMeterGauge = (c, display, values) => {
         return;
     }
 
-    let reading = (values[0] - min) / (max - min);
-    if (isNaN(reading)) {
+    let reading = (Math.max(values[0], min) - min) / (max - min);
+    if (!isNumber(reading)) {
         reading = min;
     }
 
@@ -371,7 +393,7 @@ const renderMeterGauge = (c, display, values) => {
     c.stroke();
 
     // show the value text
-    const text = formatValues(display, values);
+    const { text } = formatValues(display, values);
     const { font } = getTextStyles(display);
     c.font = font[0];
     c.fillStyle = fg;
@@ -407,7 +429,8 @@ const renderAttitudeIndicator = (c, display, values) => {
 
     c.translate(x0, y0);
     c.save();
-    c.rotate((-roll * Math.PI) / 180);
+    c.rotate(deg2Rad(-roll));
+    c.save();
     c.translate(0, (pitch / 10) * longSep);
 
     // draw horizon
@@ -439,9 +462,41 @@ const renderAttitudeIndicator = (c, display, values) => {
         }
     }
     c.stroke();
+
+    // draw bank angle arc
     c.restore();
+    c.lineWidth = 1;
+    c.strokeStyle = fg;
+    c.beginPath();
+    const bankR = 30;
+    const theta0 = deg2Rad(-30);
+    const t15 = deg2Rad(-15);
+    const t10 = deg2Rad(-10);
+    const bankTicks = [10, 5, 10, 5, 5, 5, 5, 5, 10, 5, 10];
+    const bankSteps = [t15, t15, t10, t10, t10, t10, t10, t10, t15, t15];
+    c.save();
+    c.rotate(theta0);
+    c.moveTo(bankR, 0);
+    c.arc(0, 0, bankR, 0, deg2Rad(-120), true);
+    for (let i = 0; i < bankTicks.length; i++) {
+        c.moveTo(30, 0);
+        c.lineTo(30 + bankTicks[i], 0);
+        if (i < bankSteps.length) {
+            c.rotate(bankSteps[i]);
+        }
+    }
+
+    c.restore();
+    c.stroke();
+    c.beginPath();
+    c.lineWidth = 2;
+    c.moveTo(-3, -(bankR + 8));
+    c.lineTo(0, -bankR);
+    c.lineTo(3, -(bankR + 8));
+    c.stroke();
 
     // draw center mark
+    c.restore();
     c.lineWidth = 2;
     c.strokeStyle = "yellow";
     c.beginPath();
@@ -453,6 +508,10 @@ const renderAttitudeIndicator = (c, display, values) => {
     c.lineTo(10, 0);
     c.lineTo(10, 8);
     c.rect(-1, -1, 2, 2);
+
+    c.moveTo(-3, -(bankR - 9));
+    c.lineTo(0, -(bankR - 1));
+    c.lineTo(3, -(bankR - 9));
     c.stroke();
 
     // draw vertical deflection dots
@@ -568,7 +627,7 @@ const renderMechanicalDisplay = (
     c.strokeStyle = fg;
     c.fillStyle = fg;
 
-    if (isNaN(value)) {
+    if (!isNumber(value)) {
         c.beginPath();
         const y0 = narrowWinY;
         const y1 = narrowWinY + narrowWinH;
@@ -690,7 +749,6 @@ const renderHSI = (c, display, values) => {
     const f2 = 0.9;
     const cdiR = 0.4 * r;
     const vdefR = 3;
-    const deg2Rad = (x) => (x / 180) * Math.PI;
 
     const hdg = deg2Rad(values[0]);
     const hdgB = deg2Rad(values[1]);
@@ -700,7 +758,7 @@ const renderHSI = (c, display, values) => {
     }
     const crs = src ? deg2Rad(values[src.crs]) : null;
     let def = src ? Math.min(Math.max(values[src.def], -3), 3) : null;
-    if (isNaN(def)) {
+    if (!isNumber(def)) {
         def = 0;
     }
     const received = src ? values[src.received] : null;
@@ -727,24 +785,7 @@ const renderHSI = (c, display, values) => {
     c.fillStyle = fg;
     c.font = `16px '${defaultFont}'`;
     c.fillText("N", -5, -0.5 * r);
-
-    if (isNumber(hdgB)) {
-        const bugW = 4;
-        const bugY1 = -(r - 3);
-        const bugY0 = -(r - 8);
-        c.stroke();
-        c.rotate(hdgB);
-        c.fillStyle = "cyan";
-        c.beginPath();
-        c.moveTo(0, bugY1);
-        c.lineTo(-bugW, -(r + 1));
-        c.lineTo(-bugW, bugY0);
-        c.lineTo(bugW, bugY0);
-        c.lineTo(bugW, -(r + 1));
-        c.lineTo(0, bugY1);
-        c.fill();
-        c.rotate(-hdgB);
-    }
+    c.stroke();
 
     if (crs != null) {
         c.rotate(crs);
@@ -780,11 +821,33 @@ const renderHSI = (c, display, values) => {
 
         c.moveTo(0, r);
         c.lineTo(0, cdiR + 1);
+
+        c.rotate(-crs);
     }
+
+    if (isNumber(hdgB)) {
+        const bugW = 4;
+        const bugY1 = -(r - 5);
+        const bugY0 = -(r - 8);
+        c.stroke();
+        c.rotate(hdgB);
+        c.lineWidth = 1;
+        c.strokeStyle = "white";
+        c.fillStyle = "cyan";
+        c.beginPath();
+        c.moveTo(0, bugY1);
+        c.lineTo(-bugW, -(r + 1));
+        c.lineTo(-bugW, bugY0);
+        c.lineTo(bugW, bugY0);
+        c.lineTo(bugW, -(r + 1));
+        c.lineTo(0, bugY1);
+        c.fill();
+    }
+
     c.stroke();
 };
 
-const renderBarGauge = (c, display, values) => {
+const renderBarGauge = (c, display, values_) => {
     const bg = "black";
     const fg = "white";
     const w = c.canvas.width;
@@ -798,17 +861,12 @@ const renderBarGauge = (c, display, values) => {
     const slotHeight = 60;
     const barWidth = slotWidth * 0.6;
 
-    const text = formatValues(display, values, display.values.length);
+    const { text, values } = formatValues(display, values_, display.fmt.length);
     const label = getLabels(display);
     // TODO: cache this
     const { font, color_fg } = getTextStyles({
         size: display.size,
-        color_fg: formatColors(
-            "color_fg",
-            display,
-            values,
-            display.values.length,
-        ),
+        color_fg: formatColors("color_fg", display, values, values.length),
     });
 
     c.rotate(Math.PI / 2);
@@ -845,18 +903,34 @@ const drawGauge = async (key, label, values) => {
         alt: renderAltimeter,
         hsi: renderHSI,
     };
-    await device.drawKey(key, (c) => {
-        const display = label.display;
-        if (display.type == null) {
-            return;
-        }
-        if (types[display.type]) {
-            types[display.type](c, display, values);
-        }
+    const display = label.display;
+    if (display.type == null) {
+        return;
+    }
+    if (types[display.type]) {
+        renderTasks.push({
+            key,
+            func: (c) => types[display.type](c, display, values),
+        });
+    }
+};
+
+const resetRendering = async () => {
+    for (let i = 0; i < renderStop.length; i++) {
+        renderStop[i]();
+    }
+    renderStop = [];
+    if (renderTasks) {
+        await renderTasks.pause();
+    }
+    renderTasks = queue(async (e) => {
+        const { key, func } = e;
+        await device.drawKey(key, func);
     });
 };
 
 const loadPage = async (page) => {
+    await resetRendering();
     // page is not null
     const { left, right, keys } = page;
     let pms = [];
@@ -866,7 +940,7 @@ const loadPage = async (page) => {
         const conf = Array.isArray(keys) && keys.length > i ? keys[i] : null;
         pms.push(drawKey(i, conf, false));
         if (isObject(conf) && conf.display != null) {
-            drawGauge(i, conf, []);
+            conf.renderStart();
         }
     }
     await Promise.all(pms);
@@ -899,12 +973,42 @@ device.on("connect", async () => {
                 Array.isArray(conf.display.source)
             ) {
                 let values = [];
+                //conf.fps = 0;
                 for (let k = 0; k < conf.display.source.length; k++) {
-                    values.push(NaN);
+                    values.push(null);
                 }
                 const freq = isNumber(conf.display.freq)
                     ? conf.display.freq
                     : 1;
+
+                const msPerFrame = 1000 / freq;
+                conf.renderStart = () => {
+                    let enabled = true;
+                    let startTime = new Date();
+                    let timeout;
+                    function draw() {
+                        if (!enabled) {
+                            return;
+                        }
+                        drawGauge(j, conf, values);
+                        //conf.fps++;
+                        let frameTime = msPerFrame;
+                        const elapsedTime = new Date() - startTime;
+                        if (elapsedTime > 1000) {
+                            startTime = new Date();
+                            conf.fps = 0;
+                        } else if (elapsedTime + frameTime > 1000) {
+                            frameTime = 1000 - elapsedTime;
+                        }
+                        timeout = setTimeout(draw, frameTime);
+                    }
+                    draw();
+                    renderStop.push(() => {
+                        enabled = false;
+                        clearTimeout(timeout);
+                    });
+                };
+
                 for (let k = 0; k < conf.display.source.length; k++) {
                     const source = conf.display.source[k];
                     const xplane_dataref = source.xplane_dataref;
@@ -912,12 +1016,7 @@ device.on("connect", async () => {
                         await xplane.subscribeDataRef(
                             xplane_dataref,
                             freq,
-                            async (v) => {
-                                values[k] = v;
-                                if (currentPage == i) {
-                                    await drawGauge(j, conf, values);
-                                }
-                            },
+                            async (v) => (values[k] = v),
                         );
                     }
                 }
@@ -1029,6 +1128,7 @@ device.on("touchend", async ({ changedTouches, touches }) => {
 });
 
 process.on("SIGINT", async () => {
+    await resetRendering();
     await device.close();
     await xplane.close();
     process.exit();
