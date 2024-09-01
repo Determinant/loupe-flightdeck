@@ -413,7 +413,8 @@ const renderAttitudeIndicator = (c, display, values) => {
 
     const pitch = values[0] || 0;
     const roll = values[1] || 0;
-    let src = isObject(display.navs) ? display.navs[values[2]] : null;
+    const slip = values[2] || 0;
+    let src = isObject(display.navs) ? display.navs[values[3]] : null;
     if (!isObject(src)) {
         src = null;
     }
@@ -512,6 +513,10 @@ const renderAttitudeIndicator = (c, display, values) => {
     c.moveTo(-3, -(bankR - 9));
     c.lineTo(0, -(bankR - 1));
     c.lineTo(3, -(bankR - 9));
+
+    const slipD = -slip * 2;
+    c.moveTo(-5 + slipD, -(bankR - 9));
+    c.lineTo(5 + slipD, -(bankR - 9));
     c.stroke();
 
     // draw vertical deflection dots

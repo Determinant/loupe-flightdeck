@@ -140,20 +140,21 @@
         source:
           - xplane_dataref: sim/cockpit/gyros/the_ind_ahars_pilot_deg # pitch
           - xplane_dataref: sim/cockpit/gyros/phi_ind_ahars_pilot_deg # roll
+          - xplane_dataref: sim/cockpit2/gauges/indicators/slip_deg
           - xplane_dataref: sim/cockpit2/radios/actuators/HSI_source_select_pilot # navigation source for HSI
           - xplane_dataref: sim/cockpit2/radios/indicators/hsi_vdef_dots_pilot
           - xplane_dataref: sim/cockpit2/radios/indicators/hsi_flag_glideslope_pilot
         # navs contains the mapping from the HSI source value (source[2]) to the index in source[] array
         navs:
           2:
-            def: 3
-            received: 4
+            def: 4
+            received: 5
           0:
-            def: 3
-            received: 4
+            def: 4
+            received: 5
           1:
-            def: 3
-            received: 4
+            def: 4
+            received: 5
     - display:
         type: alt
         freq: 24
