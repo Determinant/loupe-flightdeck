@@ -187,22 +187,28 @@
           - xplane_dataref: sim/cockpit2/radios/actuators/HSI_source_select_pilot # navigation source for HSI
           - xplane_dataref: sim/cockpit2/radios/indicators/hsi_hdef_dots_pilot
           - xplane_dataref: sim/cockpit2/radios/indicators/hsi_display_horizontal_pilot
-          - xplane_dataref: sim/cockpit/radios/gps_course_degtm
+          - xplane_dataref: sim/cockpit/radios/hsi_obs_deg_mag_pilot
+          - xplane_dataref: sim/cockpit/radios/gps_fromto
           - xplane_dataref: sim/cockpit2/radios/actuators/nav1_obs_deg_mag_pilot
+          - xplane_dataref: sim/cockpit/radios/nav1_fromto
           - xplane_dataref: sim/cockpit2/radios/actuators/nav2_obs_deg_mag_pilot
+          - xplane_dataref: sim/cockpit/radios/nav2_fromto
         navs:
           2:
             crs: 5
+            fromto: 6
             def: 3
             received: 4
             color: magenta
           0:
-            crs: 6
+            crs: 7
+            fromto: 8
             def: 3
             received: 4
             color: '#2dfe54'
           1:
-            crs: 7
+            crs: 9
+            fromto: 10
             def: 3
             received: 4
             color: '#2dfe54'

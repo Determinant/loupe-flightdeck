@@ -762,6 +762,8 @@ const renderHSI = (c, display, values) => {
         src = null;
     }
     const crs = src ? deg2Rad(values[src.crs]) : null;
+    const fromto = src ? values[src.fromto] : null;
+    console.log(fromto);
     let def = src ? Math.min(Math.max(values[src.def], -3), 3) : null;
     if (!isNumber(def)) {
         def = 0;
