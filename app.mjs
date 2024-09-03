@@ -763,7 +763,6 @@ const renderHSI = (c, display, values) => {
     }
     const crs = src ? deg2Rad(values[src.crs]) : null;
     const fromto = src ? values[src.fromto] : null;
-    console.log(fromto);
     let def = src ? Math.min(Math.max(values[src.def], -3), 3) : null;
     if (!isNumber(def)) {
         def = 0;
@@ -798,11 +797,10 @@ const renderHSI = (c, display, values) => {
         c.rotate(crs);
 
         for (let i = -2; i <= 2; i++) {
-            if (i != 0) {
-                const x = 13 * i;
-                c.moveTo(x + vdefR, 0);
-                c.arc(x, 0, vdefR, 0, pi2);
-            }
+            const r = i == 0 ? 1 : vdefR;
+            const x = 13 * i;
+            c.moveTo(x + r, 0);
+            c.arc(x, 0, r, 0, pi2);
         }
         c.stroke();
 
@@ -819,15 +817,31 @@ const renderHSI = (c, display, values) => {
 
         c.moveTo(0, -r);
         c.lineTo(0, -(cdiR + 1));
-        c.moveTo(0, -r);
 
         // crs arrowhead
-        c.lineTo(-5, -0.8 * r);
-        c.lineTo(5, -0.8 * r);
-        c.lineTo(0, -r);
+        let y0 = -f1 * r;
+        let y1 = 0.8 * y0;
+        c.moveTo(0, y0);
+        c.lineTo(-5, y1);
+        c.lineTo(5, y1);
+        c.lineTo(0, y0);
 
         c.moveTo(0, r);
         c.lineTo(0, cdiR + 1);
+
+        // from/to arrowhead
+        if (fromto) {
+            let y0 = -cdiR;
+            let y1 = 0.4 * y0;
+            if (fromto != 1) {
+                y0 = -y0;
+                y1 = -y1;
+            }
+            c.moveTo(0, y0);
+            c.lineTo(-5, y1);
+            c.lineTo(5, y1);
+            c.lineTo(0, y0);
+        }
 
         c.rotate(-crs);
     }

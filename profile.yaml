@@ -187,7 +187,7 @@
           - xplane_dataref: sim/cockpit2/radios/actuators/HSI_source_select_pilot # navigation source for HSI
           - xplane_dataref: sim/cockpit2/radios/indicators/hsi_hdef_dots_pilot
           - xplane_dataref: sim/cockpit2/radios/indicators/hsi_display_horizontal_pilot
-          - xplane_dataref: sim/cockpit/radios/hsi_obs_deg_mag_pilot
+          - xplane_dataref: sim/cockpit/radios/gps_course_degtm
           - xplane_dataref: sim/cockpit/radios/gps_fromto
           - xplane_dataref: sim/cockpit2/radios/actuators/nav1_obs_deg_mag_pilot
           - xplane_dataref: sim/cockpit/radios/nav1_fromto
