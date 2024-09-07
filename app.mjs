@@ -221,9 +221,9 @@ const renderMultiLineText = (c, x0, y0, w, h, text, styles, conf) => {
 };
 
 const drawKey = async (id, conf, pressed) => {
-    if (conf && conf.display != null) {
+    if (conf && isObject(conf.display)) {
         // not an input, but a display gauge
-        conf.isPressed = pressed;
+        conf.display.pressed = pressed;
         return;
     }
 
@@ -763,7 +763,8 @@ const renderHSI = (c, display, values) => {
     if (!isObject(src)) {
         src = null;
     }
-    if (src) {
+    if (display.pressed && src) {
+        display.pressed = false;
         xplane.sendCommand(src.next.toString());
     }
     const crs = src ? deg2Rad(values[src.crs]) : null;
@@ -1008,7 +1009,7 @@ device.on("connect", async () => {
                     : 1;
 
                 const msPerFrame = 1000 / freq;
-                conf.isPressed = false;
+                conf.display.pressed = false;
                 conf.renderStart = () => {
                     let enabled = true;
                     let startTime = new Date();
