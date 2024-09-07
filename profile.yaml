@@ -202,18 +202,22 @@
             def: 3
             received: 4
             color: magenta
+            next: sim/autopilot/hsi_select_nav1
           0:
             crs: 7
             fromto: 8
             def: 3
             received: 4
             color: '#2dfe54'
+            next: sim/autopilot/hsi_select_nav2
           1:
             crs: 9
             fromto: 10
             def: 3
             received: 4
             color: '#2dfe54'
+            next: sim/autopilot/hsi_select_gps
+      pressed: {}
     - display:
         type: text
         freq: 6

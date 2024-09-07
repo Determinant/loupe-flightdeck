@@ -1,13 +1,15 @@
 #!/usr/bin/env node
 
 import { registerFont } from "canvas";
+
+const defaultFont = "OCR A Extended";
 if (process.platform == "linux") {
     console.warn(
         "node-canvas does not support directly using font file in Linux (see https://github.com/Automattic/node-canvas/issues/2097#issuecomment-1803950952), please copy ./ocr-a-ext.ttf in this folder to your local font folder (~/.fonts/) or install it system-wide.",
     );
 } else {
     registerFont(`${import.meta.dirname}/ocr-a-ext.ttf`, {
-        family: "OCR A Extended",
+        family: defaultFont,
     });
 }
 
@@ -17,7 +19,6 @@ import { parse } from "yaml";
 import { queue } from "async";
 import { XPlane } from "./xplane.mjs";
 
-const defaultFont = "OCR A Extended";
 const defaultTextSize = 22;
 const xplane = new XPlane();
 
@@ -222,6 +223,7 @@ const renderMultiLineText = (c, x0, y0, w, h, text, styles, conf) => {
 const drawKey = async (id, conf, pressed) => {
     if (conf && conf.display != null) {
         // not an input, but a display gauge
+        conf.isPressed = pressed;
         return;
     }
 
@@ -761,6 +763,9 @@ const renderHSI = (c, display, values) => {
     if (!isObject(src)) {
         src = null;
     }
+    if (src) {
+        xplane.sendCommand(src.next.toString());
+    }
     const crs = src ? deg2Rad(values[src.crs]) : null;
     const fromto = src ? values[src.fromto] : null;
     let def = src ? Math.min(Math.max(values[src.def], -3), 3) : null;
@@ -931,7 +936,7 @@ const drawGauge = (key, label, values) => {
     if (types[display.type]) {
         renderTasks.push({
             key,
-            func: (c) => types[display.type](c, display, values),
+            func: (c) => types[display.type](c, display, values, pressed),
         });
     }
 };
@@ -1003,6 +1008,7 @@ device.on("connect", async () => {
                     : 1;
 
                 const msPerFrame = 1000 / freq;
+                conf.isPressed = false;
                 conf.renderStart = () => {
                     let enabled = true;
                     let startTime = new Date();
