@@ -4,6 +4,22 @@ Loupe Flightdeck
 NOTICE: please ask me for permission before using the code for any commercial purpose.
 
 - Only tested on `Razer Stream Controller`_ (which is an identical device to `Loupedeck Live`_, I bought it because it's cheaper).
+
+
+Install from NPM
+----------------
+
+::
+
+   # macOS: make sure you have dependencies installed
+   # brew install nodejs
+   # brew install pkg-config pixman cairo pango
+
+   npm install -g loupe-flightdeck # install this app
+   loupe-flightdeck # run, or run with profile file name as first parameter
+
+Try from the repo
+-----------------
 - Setup: ``npm install``
 - Run: ``./app.mjs`` or ``node app.mjs`` (make sure you don't have other software using the same device, such as Loupedeck's official software running)
 
@@ -24,7 +40,7 @@ Demo
 Resources
 ---------
 
-- Only tested on Linux/Windows (run with CMD), please let me know if it also runs or doesn't run on macOS.
+- Tested on Linux/Windows/macOS (different OS may require different ways to install the dependencies).
 - Currently only X-Plane is supported. If you're interested in working on MSFS support, etc., please let me know.
 
 - Videos: https://photos.app.goo.gl/1hAQ19DZQRo4RRr9A

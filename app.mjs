@@ -914,7 +914,7 @@ const renderBarGauge = (c, display, values_) => {
     }
 };
 
-const drawGauge = async (key, label, values) => {
+const drawGauge = (key, label, values) => {
     const types = {
         meter: renderMeterGauge,
         text: renderTextGauge,
@@ -1044,7 +1044,7 @@ device.on("connect", async () => {
             }
         }
     }
-    loadPage(getCurrentPage());
+    await loadPage(getCurrentPage());
 });
 
 const handleKnobEvent = async (id) => {
@@ -1091,7 +1091,7 @@ device.on("down", async ({ id }) => {
         }
         console.info(`switch to page: ${id}`);
         currentPage = id;
-        loadPage(getCurrentPage());
+        await loadPage(getCurrentPage());
     } else {
         takeAction(await handleKnobEvent(id), "pressed", false);
     }

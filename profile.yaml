@@ -75,7 +75,7 @@
           - 12
         exp:
           - '$d'
-          - '1 - $d'
+          - '$d != null ? 1 - $d : null'
           - '$d'
           - '$d'
 
@@ -127,6 +127,7 @@
     - label:
         - Flaps
         - Up
+      size: 20
       pressed:
         xplane_cmd: sim/flight_controls/flaps_up
     - display:
@@ -165,6 +166,7 @@
     - label:
         - Flaps
         - Down
+      size: 20
       pressed:
         xplane_cmd: sim/flight_controls/flaps_down
     - display:
@@ -237,6 +239,7 @@
     - label: Brake
       pressed:
         xplane_cmd: sim/flight_controls/brakes_toggle_regular
+      size: 20
 
 # Page 1
 - right:
@@ -416,10 +419,14 @@
         xplane_cmd: sim/GPS/g1000n1_nav12
     -
   keys:
-    - label: <-COM
+    - label:
+        - COM
+        - <->
       pressed:
         xplane_cmd: sim/GPS/g1000n1_com_ff
-    - label: <-NAV
+    - label:
+        - NAV
+        - <->
       pressed:
         xplane_cmd: sim/GPS/g1000n1_nav_ff
     -
