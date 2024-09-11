@@ -4,14 +4,14 @@ import { registerFont } from "canvas";
 
 const defaultFont = "OCR A Extended";
 if (process.platform == "linux") {
-    console.warn(
-        "node-canvas does not support directly using font file in Linux (see https://github.com/Automattic/node-canvas/issues/2097#issuecomment-1803950952), please copy ./ocr-a-ext.ttf in this folder to your local font folder (~/.fonts/) or install it system-wide.",
-    );
-} else {
-    registerFont(`${import.meta.dirname}/ocr-a-ext.ttf`, {
-        family: defaultFont,
-    });
+    process.env.FONTCONFIG_FILE = import.meta.dirname;
+    //console.warn(
+    //    "node-canvas does not support directly using font file in Linux (see https://github.com/Automattic/node-canvas/issues/2097#issuecomment-1803950952), please copy ./ocr-a-ext.ttf in this folder to your local font folder (~/.fonts/) or install it system-wide.",
+    //);
 }
+registerFont(`${import.meta.dirname}/font.ttf`, {
+    family: defaultFont,
+});
 
 import { discover, HAPTIC } from "loupedeck";
 import { readFile } from "fs/promises";
@@ -241,18 +241,13 @@ const drawKey = async (id, conf, pressed) => {
         c.lineWidth = 2;
         c.strokeStyle = fg;
         c.strokeRect(padding, padding, w - padding * 2, h - padding * 2);
-
         if (conf != null) {
-            renderMultiLineText(
-                c,
-                0,
-                0,
-                w,
-                h,
-                getLabels(conf),
-                getTextStyles(conf),
-                conf,
-            );
+            const labels = getLabels(conf);
+            const styles = getTextStyles(conf);
+            for (let i = 0; i < labels.length; i++) {
+                styles.color_fg[i] = fg;
+            }
+            renderMultiLineText(c, 0, 0, w, h, labels, styles, conf);
         }
         // otherwise the empty key style is still drawn
     });
