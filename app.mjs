@@ -706,7 +706,7 @@ const renderAltimeter = (c, display, values) => {
     c.fillStyle = bg;
     c.fillRect(0, 0, w, h);
 
-    renderMechanicalDisplay(c, w, h, values[0], 5, false, 2, 20, 18);
+    renderMechanicalDisplay(c, w, h, values[0], 5, false, 2, 20, defaultTextSize * 0.9);
 
     // draw floating vsi window
     const vs = values[1];
