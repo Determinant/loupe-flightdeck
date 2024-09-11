@@ -127,7 +127,6 @@
     - label:
         - Flaps
         - Up
-      size: 20
       pressed:
         xplane_cmd: sim/flight_controls/flaps_up
     - display:
@@ -166,7 +165,6 @@
     - label:
         - Flaps
         - Down
-      size: 20
       pressed:
         xplane_cmd: sim/flight_controls/flaps_down
     - display:
@@ -243,7 +241,6 @@
     - label: Brake
       pressed:
         xplane_cmd: sim/flight_controls/brakes_toggle_regular
-      size: 20
 
 # Page 1
 - right:
@@ -308,7 +305,6 @@
 # Page 2
 - left:
     - label: FMS out
-      size: 20
       inc:
         xplane_cmd: sim/GPS/g1000n1_fms_outer_up
       dec:
@@ -316,7 +312,6 @@
       pressed:
         xplane_cmd: sim/GPS/g1000n1_cursor
     - label: FMS in
-      size: 20
       inc:
         xplane_cmd: sim/GPS/g1000n1_fms_inner_up
       dec:
@@ -330,7 +325,6 @@
         xplane_cmd: sim/GPS/g1000n1_baro_down
   right:
     - label: FMS out
-      size: 20
       inc:
         xplane_cmd: sim/GPS/g1000n3_fms_outer_up
       dec:
@@ -338,7 +332,6 @@
       pressed:
         xplane_cmd: sim/GPS/g1000n3_cursor
     - label: FMS in
-      size: 20
       inc:
         xplane_cmd: sim/GPS/g1000n3_fms_inner_up
       dec:
@@ -388,7 +381,6 @@
 # Page 3
 - left:
     - label: COM in
-      size: 20
       inc:
         xplane_cmd: sim/GPS/g1000n1_com_inner_up
       dec:
@@ -396,7 +388,6 @@
       pressed:
         xplane_cmd: sim/GPS/g1000n1_com12
     - label: COM out
-      size: 20
       inc:
         xplane_cmd: sim/GPS/g1000n1_com_outer_up
       dec:
@@ -406,7 +397,6 @@
     -
   right:
     - label: NAV in
-      size: 20
       inc:
         xplane_cmd: sim/GPS/g1000n1_nav_inner_up
       dec:
@@ -414,7 +404,6 @@
       pressed:
         xplane_cmd: sim/GPS/g1000n1_nav12
     - label: NAV out
-      size: 20
       inc:
         xplane_cmd: sim/GPS/g1000n1_nav_outer_up
       dec:

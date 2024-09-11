@@ -2,7 +2,7 @@
 
 import { registerFont } from "canvas";
 
-const defaultFont = "OCR A Extended";
+const defaultFont = "B612"; // font.ttf uses the font from https://b612-font.com/
 if (process.platform == "linux") {
     process.env.FONTCONFIG_FILE = import.meta.dirname;
     //console.warn(
@@ -19,7 +19,7 @@ import { parse } from "yaml";
 import { queue } from "async";
 import { XPlane } from "./xplane.mjs";
 
-const defaultTextSize = 22;
+const defaultTextSize = 18;
 const xplane = new XPlane();
 
 if (process.argv.length > 3) {
