@@ -18,20 +18,9 @@ import { readFile } from "fs/promises";
 import { parse } from "yaml";
 import { queue } from "async";
 import { XPlane } from "./xplane.mjs";
+import yargs from "yargs/yargs";
 
 const defaultTextSize = 18;
-const xplane = new XPlane();
-
-if (process.argv.length > 3) {
-    console.error("./app.mjs [profile YAML file]");
-}
-const profile_file = process.argv[2];
-const pages = parse(
-    await readFile(
-        profile_file ? profile_file : `${import.meta.dirname}/profile.yaml`,
-        "utf8",
-    ),
-);
 
 const isNumber = (x) => {
     return x != null && !isNaN(x);
@@ -42,6 +31,13 @@ const isObject = (obj) => {
 };
 
 const deg2Rad = (x) => (x / 180) * Math.PI;
+
+const args = yargs(process.argv.slice(2))
+    .usage("./app.mjs [--xplane <port>] [profile YAML file]")
+    .options('xplane', { default: 49000, type: 'number'}).parse();
+const xplanePort = isNumber(args.xplane) ? args.xplane : 49000;
+const profile_file = args._[0] ? args._[0] : `${import.meta.dirname}/profile.yaml`;
+const pages = parse(await readFile(profile_file,"utf8"));
 
 // state of the controller
 let currentPage =
@@ -55,6 +51,8 @@ let device;
 // Render related variables
 let renderStop = [];
 let renderTasks;
+
+const xplane = new XPlane("localhost", xplanePort);
 
 while (!device) {
     try {
@@ -693,7 +691,8 @@ const renderIAS = (c, display, values) => {
     c.fillStyle = bg;
     c.fillRect(0, 0, w, h);
 
-    renderMechanicalDisplay(c, w, h, values[0], 20, true, 1);
+    const ias = Math.max(values[0], 0);
+    renderMechanicalDisplay(c, w, h, ias, 20, true, 1);
 };
 
 const renderAltimeter = (c, display, values) => {

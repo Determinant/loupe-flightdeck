@@ -12,7 +12,7 @@
       dec:
         xplane_cmd: sim/engines/throttle_down
       pressed:
-        xplane_cmd: sim/engines/throttle_full
+        xplane_cmd: sim/engines/TOGA_power
     - label: Prop
       color_bg: '#0000ff'
       inc:
@@ -422,7 +422,9 @@
         - <->
       pressed:
         xplane_cmd: sim/GPS/g1000n1_nav_ff
-    -
+    - label: IMC
+      pressed:
+        xplane_cmd: lfd/toggle_imc_foggles
     -
     - label:
         - COM1

@@ -7,13 +7,14 @@
     "url": "https://github.com/Determinant/loupe-flightdeck"
   },
   "engines": {
-    "node": ">=16.0.0"
+    "node": ">=16.0.0 <23.0.0"
   },
   "dependencies": {
     "async": "^3.2.6",
     "canvas": "^2.11.2",
     "loupedeck": "^6.0.1",
-    "yaml": "^2.5.0"
+    "yaml": "^2.5.0",
+    "yargs": "^17.7.2"
   },
   "bin": "./app.mjs",
   "devDependencies": {
