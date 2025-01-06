@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { registerFont } from "canvas";
+import yargs from "yargs/yargs";
 
 const defaultFont = "B612"; // font.ttf uses the font from https://b612-font.com/
 if (process.platform == "linux") {
@@ -18,7 +19,6 @@ import { readFile } from "fs/promises";
 import { parse } from "yaml";
 import { queue } from "async";
 import { XPlane } from "./xplane.mjs";
-import yargs from "yargs/yargs";
 
 const defaultTextSize = 18;
 
@@ -33,9 +33,9 @@ const isObject = (obj) => {
 const deg2Rad = (x) => (x / 180) * Math.PI;
 
 const args = yargs(process.argv.slice(2))
-    .usage("./app.mjs [--xplane <port>] [profile YAML file]")
-    .options('xplane', { default: 49000, type: 'number'}).parse();
-const xplanePort = isNumber(args.xplane) ? args.xplane : 49000;
+    .usage("./app.mjs [--xplane-port <port>] [profile YAML file]")
+    .options('xplane-port', { default: 49000, type: 'number'}).parse();
+const xplanePort = isNumber(args['xplane-port']) ? args['xplane-port'] : 49000;
 const profile_file = args._[0] ? args._[0] : `${import.meta.dirname}/profile.yaml`;
 const pages = parse(await readFile(profile_file,"utf8"));
 
