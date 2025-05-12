@@ -12,13 +12,15 @@
       dec:
         xplane_cmd: sim/engines/throttle_down
       pressed:
-        xplane_cmd: sim/engines/TOGA_power
+        xplane_cmd: lfd/throttle_full
     - label: Prop
       color_bg: '#0000ff'
       inc:
         xplane_cmd: sim/engines/prop_up
       dec:
         xplane_cmd: sim/engines/prop_down
+      pressed:
+        xplane_cmd: lfd/prop_full
     - label: Mix.
       inc:
         xplane_cmd: sim/engines/mixture_up
