@@ -1,6 +1,19 @@
 import dgram from "node:dgram";
 
+interface Subscription {
+    dataRef: string;
+    freq: number;
+    handler: (value: number) => void;
+}
+
 export class XPlane {
+    private socket: dgram.Socket;
+    private subscribed: Subscription[];
+    private lastReceived: Date | null;
+    private statusChecker: NodeJS.Timeout;
+    private xplaneAddr: string;
+    private xplanePort: number;
+
     constructor(
         xplaneAddr = "localhost",
         xplanePort = 49000,
@@ -14,7 +27,7 @@ export class XPlane {
         this.statusChecker = setTimeout(async function statusChecker() {
             let active = false;
             if (xplane.lastReceived) {
-                if (new Date() - xplane.lastReceived < statusTimeout) {
+                if (new Date().getTime() - xplane.lastReceived.getTime() < statusTimeout) {
                     active = true;
                 }
             }
@@ -28,7 +41,7 @@ export class XPlane {
         }, statusCheck);
         this.xplaneAddr = xplaneAddr;
         this.xplanePort = xplanePort;
-        this.socket.on("message", async (msg, rinfo) => {
+        this.socket.on("message", async (msg: Buffer, rinfo: dgram.RemoteInfo) => {
             if (msg.subarray(0, 5).toString() != "RREF,") {
                 console.info("dropping unrelated message");
                 return;
@@ -53,7 +66,7 @@ export class XPlane {
         this.socket.bind(0);
     }
 
-    async _subscribeDataRef(idx) {
+    private async _subscribeDataRef(idx: number) {
         const { dataRef, freq } = this.subscribed[idx];
         let buffer = Buffer.alloc(4 + 1 + 4 * 2 + 400);
         let off = buffer.write("RREF");
@@ -71,23 +84,21 @@ export class XPlane {
         );
     }
 
-    async _subscribeAll() {
+    private async _subscribeAll() {
         for (let i = 0; i < this.subscribed.length; i++) {
             await this._subscribeDataRef(i);
         }
     }
 
-    async subscribeDataRef(dataRef, freq, handler) {
+    public async subscribeDataRef(dataRef: string, freq: number, handler: (value: number) => void) {
         const idx = this.subscribed.length;
-        if (handler) {
-            this.subscribed.push({ dataRef, handler, freq });
-        }
+        this.subscribed.push({ dataRef, handler, freq });
         console.info(`x-plane subscribed[${idx}] => ${dataRef} @${freq}Hz`);
         this._subscribeDataRef(idx);
     }
     //subscribeDataRef("sim/flightmodel/position/indicated_airspeed");
 
-    async sendCommand(cmd) {
+    public async sendCommand(cmd: string) {
         let buffer = Buffer.alloc(4 + 1 + cmd.length + 1);
         let off = buffer.write("CMND");
         off = buffer.writeUInt8(0, off); // null terminated
@@ -104,7 +115,7 @@ export class XPlane {
     }
     //sendCommand("sim/GPS/g1000n1_hdg_down");
 
-    async close() {
+    public async close() {
         for (let i = 0; i < this.subscribed.length; i++) {
             this.subscribed[i].freq = 0;
             await this._subscribeDataRef(i);

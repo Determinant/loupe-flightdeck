@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
-import { registerFont } from "canvas";
+import { registerFont, CanvasRenderingContext2D, Canvas } from "canvas";
 import yargs from "yargs/yargs";
+import { Arguments } from "yargs";
 
 const defaultFont = "B612"; // font.ttf uses the font from https://b612-font.com/
 if (process.platform == "linux") {
@@ -14,45 +15,151 @@ registerFont(`${import.meta.dirname}/font.ttf`, {
     family: defaultFont,
 });
 
-import { discover, HAPTIC } from "loupedeck";
+import { discover, HAPTIC, LoupedeckDevice } from "loupedeck";
 import { readFile } from "fs/promises";
 import { parse } from "yaml";
-import { queue } from "async";
-import { XPlane } from "./xplane.mjs";
+import { queue, QueueObject } from "async";
+import { XPlane } from "./xplane.js";
 
 const defaultTextSize = 18;
 
-const isNumber = (x) => {
+interface PageConfig {
+    default?: number;
+    keys?: KeyConfig[];
+    left?: KnobConfig[];
+    right?: KnobConfig[];
+    color?: string;
+}
+
+interface KeyConfig {
+    label?: string | string[];
+    size?: number | number[];
+    color_bg?: string | string[];
+    color_fg?: string | string[];
+    sep?: number;
+    display?: DisplayConfig;
+    pressed?: ActionSpec;
+}
+
+interface KnobConfig {
+    label?: string | string[];
+    size?: number | number[];
+    color_bg?: string | string[];
+    color_fg?: string | string[];
+    sep?: number;
+    pressed?: ActionSpec;
+    inc?: ActionSpec;
+    dec?: ActionSpec;
+}
+
+interface ActionSpec {
+    xplane_cmd?: string;
+}
+
+interface DisplayConfig {
+    type?: string;
+    source?: SourceConfig[];
+    freq?: number;
+    min?: number;
+    max?: number;
+    stops?: StopConfig[];
+    fmt?: string | string[];
+    exp?: string | string[];
+    size?: number | number[];
+    color_fg?: string | string[];
+    color_bg?: string | string[];
+    label?: string | string[];
+    navs?: Record<string, NavConfig>;
+    pressed?: boolean;
+}
+
+interface SourceConfig {
+    xplane_dataref?: string;
+}
+
+interface StopConfig {
+    value_begin: number;
+    value_end: number;
+    color: string;
+}
+
+interface NavConfig {
+    def: number;
+    received: number;
+    crs: number;
+    fromto: number;
+    next: string;
+    color?: string;
+}
+
+interface TextStyles {
+    font: string[];
+    color_bg: (string | undefined)[];
+    color_fg: (string | undefined)[];
+}
+
+interface RenderTask {
+    key: number;
+    func: (c: CanvasRenderingContext2D) => void;
+}
+
+interface TouchTarget {
+    key?: number;
+}
+
+interface TouchEvent {
+    target: TouchTarget;
+}
+
+interface DeviceEvent {
+    id: string | number;
+    delta?: number;
+    changedTouches?: TouchEvent[];
+    touches?: TouchEvent[];
+}
+
+const isNumber = (x: any): x is number => {
     return x != null && !isNaN(x);
 };
 
-const isObject = (obj) => {
+const isObject = (obj: any): obj is Record<string, any> => {
     return obj != null && obj.constructor.name === "Object";
 };
 
-const deg2Rad = (x) => (x / 180) * Math.PI;
+const deg2Rad = (x: number): number => (x / 180) * Math.PI;
+
+interface AppArgs {
+    'xplane-port': number;
+    'xplane-host': string;
+    _: string[];
+}
 
 const args = yargs(process.argv.slice(2))
-    .usage("./app.mjs [--xplane-port <port>] [profile YAML file]")
-    .options('xplane-port', { default: 49000, type: 'number'}).parse();
+    .usage("./app.mjs [--xplane-host <host>] [--xplane-port <port>] [profile YAML file]")
+    .options({
+        'xplane-port': { default: 49000, type: 'number'},
+        'xplane-host': { default: "localhost", type: 'string'},
+    }).parse() as Arguments<AppArgs>;
 const xplanePort = isNumber(args['xplane-port']) ? args['xplane-port'] : 49000;
+const xplaneHost = args['xplane-host'];
 const profile_file = args._[0] ? args._[0] : `${import.meta.dirname}/profile.yaml`;
-const pages = parse(await readFile(profile_file,"utf8"));
+const pages: PageConfig[] = parse(await readFile(profile_file,"utf8"));
 
 // state of the controller
 let currentPage =
     isObject(pages[0]) && pages[0].default != null ? pages[0].default : 0;
-let pressed = new Set();
-let highlighted = new Set();
+let pressed = new Set<number>();
+let highlighted = new Set<string>();
 
 // detects and opens first connected device
-let device;
+let device: LoupedeckDevice | undefined;
 
 // Render related variables
-let renderStop = [];
-let renderTasks;
+let renderStop: (() => void)[] = [];
+let renderTasks: QueueObject<RenderTask>;
 
-const xplane = new XPlane("localhost", xplanePort);
+const xplane = new XPlane(xplaneHost, xplanePort);
+console.log(`Connecting to X-Plane at ${xplaneHost}:${xplanePort}`);
 
 while (!device) {
     try {
@@ -63,11 +170,11 @@ while (!device) {
     }
 }
 
-const getCurrentPage = () => {
+const getCurrentPage = (): PageConfig => {
     return pages[currentPage] || {};
 };
 
-const getKeyConf = (i) => {
+const getKeyConf = (i: number): KeyConfig | null => {
     const keys = getCurrentPage().keys;
     if (keys == null) {
         return null;
@@ -78,11 +185,11 @@ const getKeyConf = (i) => {
     return null;
 };
 
-const getTextStyles = (conf) => {
+const getTextStyles = (conf: KeyConfig | KnobConfig | DisplayConfig): TextStyles => {
     // conf must be non-null
-    let font = [];
-    let color_bg = [];
-    let color_fg = [];
+    let font: string[] = [];
+    let color_bg: (string | undefined)[] = [];
+    let color_fg: (string | undefined)[] = [];
 
     if (isObject(conf)) {
         const size = Array.isArray(conf.size) ? conf.size : [conf.size];
@@ -107,21 +214,21 @@ const getTextStyles = (conf) => {
     };
 };
 
-const getLabels = (conf) => {
-    let text;
+const getLabels = (conf: KeyConfig | KnobConfig | DisplayConfig | string): string[] => {
+    let text: string[];
     if (isObject(conf)) {
-        text = Array.isArray(conf.label) ? conf.label : [conf.label];
+        text = Array.isArray(conf.label) ? conf.label : [conf.label || ""];
     } else {
         text = [conf.toString()];
     }
     return text;
 };
 
-const transformValues = (conf, values) => {
-    const f = (exp, v) => Function("$d", `"use strict"; return(${exp});`)(v);
-    let last;
+const transformValues = (conf: DisplayConfig, values: (number | null)[]): (number | null)[] => {
+    const f = (exp: string, v: number | null) => Function("$d", `"use strict"; return(${exp});`)(v);
+    let last: string | undefined;
     const exps = Array.isArray(conf.exp) ? conf.exp : [conf.exp];
-    let res = [];
+    let res: (number | null)[] = [];
     for (let i = 0; i < values.length; i++) {
         let exp = exps[i] || last;
         if (exp) {
@@ -134,9 +241,9 @@ const transformValues = (conf, values) => {
     return res;
 };
 
-const formatValues = (conf, values_, n = 1) => {
+const formatValues = (conf: DisplayConfig, values_: (number | null)[], n = 1): { text: string[], values: (number | null)[] } => {
     const values = transformValues(conf, values_);
-    const f = (fmt) => {
+    const f = (fmt?: string) => {
         if (fmt) {
             return Function("$d", `"use strict"; return(\`${fmt}\`);`)(values);
         }
@@ -146,8 +253,8 @@ const formatValues = (conf, values_, n = 1) => {
         return values[0].toFixed(0).toString();
     };
 
-    let last;
-    let text = [];
+    let last: string | undefined;
+    let text: string[] = [];
     const formatter = Array.isArray(conf.fmt) ? conf.fmt : [conf.fmt];
     for (let i = 0; i < n; i++) {
         let fmt = formatter[i] || last;
@@ -157,19 +264,19 @@ const formatValues = (conf, values_, n = 1) => {
     return { text, values };
 };
 
-const formatColors = (color_name, conf, values, n = 1) => {
-    const f = (fmt) => {
+const formatColors = (color_name: string, conf: DisplayConfig, values: (number | null)[], n = 1): string[] => {
+    const f = (fmt?: string) => {
         if (fmt) {
             return Function("$d", `"use strict"; return(\`${fmt}\`);`)(values);
         }
         return "#fff";
     };
 
-    let last;
-    let color = [];
-    const formatter = Array.isArray(conf[color_name])
-        ? conf[color_name]
-        : [conf[color_name]];
+    let last: string | undefined;
+    let color: string[] = [];
+    const formatter = Array.isArray((conf as any)[color_name])
+        ? (conf as any)[color_name]
+        : [(conf as any)[color_name]];
     for (let i = 0; i < n; i++) {
         let fmt = formatter[i] || last;
         color.push(f(fmt));
@@ -178,7 +285,7 @@ const formatColors = (color_name, conf, values, n = 1) => {
     return color;
 };
 
-const renderMultiLineText = (c, x0, y0, w, h, text, styles, conf) => {
+const renderMultiLineText = (c: CanvasRenderingContext2D, x0: number, y0: number, w: number, h: number, text: string[], styles: TextStyles, conf: KeyConfig | KnobConfig | Record<string, any>) => {
     const { font, color_fg } = styles;
     c.save();
     let sep = conf.sep;
@@ -187,11 +294,11 @@ const renderMultiLineText = (c, x0, y0, w, h, text, styles, conf) => {
         const mx = c.measureText("x");
         sep = mx.actualBoundingBoxAscent - mx.actualBoundingBoxDescent;
     }
-    let ms = [];
+    let ms: TextMetrics[] = [];
     let totalHeight = 0;
     for (let i = 0; i < text.length; i++) {
         c.font = font[i];
-        const m = c.measureText(text[i]);
+        const m = c.measureText(text[i]) as any;
         ms.push(m);
         totalHeight += m.actualBoundingBoxAscent - m.actualBoundingBoxDescent;
     }
@@ -218,14 +325,14 @@ const renderMultiLineText = (c, x0, y0, w, h, text, styles, conf) => {
     c.restore();
 };
 
-const drawKey = async (id, conf, pressed) => {
+const drawKey = async (id: number, conf: KeyConfig | null, pressed: boolean): Promise<void> => {
     if (conf && isObject(conf.display)) {
         // not an input, but a display gauge
         conf.display.pressed = pressed;
         return;
     }
 
-    await device.drawKey(id, (c) => {
+    await device!.drawKey(id, (c: any) => {
         const padding = 10;
         const bg = pressed ? "white" : "black";
         const fg = pressed ? "black" : "white";
@@ -251,8 +358,8 @@ const drawKey = async (id, conf, pressed) => {
     });
 };
 
-const drawSideKnobs = async (side, confs, highlight) => {
-    await device.drawScreen(side, (c) => {
+const drawSideKnobs = async (side: "left" | "right", confs: KnobConfig[] | undefined, highlight?: boolean[]): Promise<void> => {
+    await device!.drawScreen(side, (c: any) => {
         const page = getCurrentPage();
         const light = page.color != null ? page.color : "white";
         if (!highlight) {
@@ -300,7 +407,7 @@ const drawSideKnobs = async (side, confs, highlight) => {
                     h,
                     w,
                     text,
-                    { font, color_fg: [fg] },
+                    { font, color_fg: [fg], color_bg: [] },
                     confs[i],
                 );
                 c.resetTransform();
@@ -309,7 +416,7 @@ const drawSideKnobs = async (side, confs, highlight) => {
     });
 };
 
-const renderTextGauge = (c, display, values_) => {
+const renderTextGauge = (c: CanvasRenderingContext2D, display: DisplayConfig, values_: (number | null)[]): void => {
     const bg = "black";
     const w = c.canvas.width;
     const h = c.canvas.height;
@@ -318,17 +425,17 @@ const renderTextGauge = (c, display, values_) => {
     c.fillStyle = bg;
     c.fillRect(0, 0, w, h);
 
-    const { text, values } = formatValues(display, values_, display.fmt.length);
+    const { text, values } = formatValues(display, values_, display.fmt ? (Array.isArray(display.fmt) ? display.fmt.length : 1) : 1);
 
     // TODO: cache this
     const styles = getTextStyles({
         size: display.size,
         color_fg: formatColors("color_fg", display, values, values.length),
     });
-    renderMultiLineText(c, 0, 0, w, h, text, styles, {});
+    renderMultiLineText(c, 0, 0, w, h, text, { ...styles, color_bg: [] }, {});
 };
 
-const renderMeterGauge = (c, display, values) => {
+const renderMeterGauge = (c: CanvasRenderingContext2D, display: DisplayConfig, values: (number | null)[]): void => {
     const bg = "black";
     const fg = "white";
     const w = c.canvas.width;
@@ -340,7 +447,7 @@ const renderMeterGauge = (c, display, values) => {
         return;
     }
 
-    let reading = (Math.max(values[0], min) - min) / (max - min);
+    let reading = (Math.max(values[0] || 0, min) - min) / (max || 0 - min);
     if (!isNumber(reading)) {
         reading = min;
     }
@@ -358,24 +465,26 @@ const renderMeterGauge = (c, display, values) => {
     const inner = outer - width;
 
     // draw each arc segments
-    for (let i = 0; i < stops.length; i++) {
-        const theta0 =
-            Math.PI * (1 + (stops[i].value_begin - min) / (max - min)) + 0.05;
-        const theta1 = Math.PI * (1 + (stops[i].value_end - min) / (max - min));
+    if (stops) {
+        for (let i = 0; i < stops.length; i++) {
+            const theta0 =
+                Math.PI * (1 + (stops[i].value_begin - min) / ((max || 0) - min)) + 0.05;
+            const theta1 = Math.PI * (1 + (stops[i].value_end - min) / ((max || 0) - min));
 
-        c.beginPath();
-        c.lineWidth = width;
-        c.strokeStyle = stops[i].color;
-        c.arc(x0, y0, outer - width / 2, theta0, theta1);
-        c.stroke();
+            c.beginPath();
+            c.lineWidth = width;
+            c.strokeStyle = stops[i].color;
+            c.arc(x0, y0, outer - width / 2, theta0, theta1);
+            c.stroke();
 
-        c.beginPath();
-        c.lineWidth = 2;
-        const cos = Math.cos(theta1);
-        const sin = Math.sin(theta1);
-        c.moveTo(x0 + cos * (inner - 2), y0 + sin * (inner - 2));
-        c.lineTo(x0 + cos * (outer + 2), y0 + sin * (outer + 2));
-        c.stroke();
+            c.beginPath();
+            c.lineWidth = 2;
+            const cos = Math.cos(theta1);
+            const sin = Math.sin(theta1);
+            c.moveTo(x0 + cos * (inner - 2), y0 + sin * (inner - 2));
+            c.lineTo(x0 + cos * (outer + 2), y0 + sin * (outer + 2));
+            c.stroke();
+        }
     }
 
     // draw the needle
@@ -392,11 +501,11 @@ const renderMeterGauge = (c, display, values) => {
     const { font } = getTextStyles(display);
     c.font = font[0];
     c.fillStyle = fg;
-    const m = c.measureText(text);
-    c.fillText(text, (w - m.width) / 2, h / 2 + 25);
+    const m = c.measureText(text[0]);
+    c.fillText(text[0], (w - m.width) / 2, h / 2 + 25);
 };
 
-const renderAttitudeIndicator = (c, display, values) => {
+const renderAttitudeIndicator = (c: CanvasRenderingContext2D, display: DisplayConfig, values: (number | null)[]): void => {
     const bg = "black";
     const fg = "white";
     const w = c.canvas.width;
@@ -409,7 +518,7 @@ const renderAttitudeIndicator = (c, display, values) => {
     const pitch = values[0] || 0;
     const roll = values[1] || 0;
     const slip = values[2] || 0;
-    let src = isObject(display.navs) ? display.navs[values[3]] : null;
+    let src = isObject(display.navs) ? display.navs[values[3] || 0] : null;
     if (!isObject(src)) {
         src = null;
     }
@@ -443,10 +552,10 @@ const renderAttitudeIndicator = (c, display, values) => {
     c.lineTo(0.75 * w, 0);
     c.fillStyle = fg;
     c.font = `10px ${defaultFont}`;
-    const drawMark = (i) => {
+    const drawMark = (i: number) => {
         const y = longSep * i;
         const sign = i < 0 ? -1 : 1;
-        c.fillText(sign * i * 10, longMark[0] - 15, y + 3);
+        c.fillText((sign * i * 10).toString(), longMark[0] - 15, y + 3);
         c.moveTo(longMark[0], y);
         c.lineTo(longMark[1], y);
         c.moveTo(shortMark[0], y - sign * shortSep);
@@ -533,7 +642,7 @@ const renderAttitudeIndicator = (c, display, values) => {
 
     if (isNumber(received) && received == 0) {
         // draw CDI diamond
-        const cdiY = 13 * cdi;
+        const cdiY = 13 * (cdi || 0);
         const cdiH = 7;
         const cdiW = 4;
         c.fillStyle = "#2dfe54";
@@ -548,10 +657,17 @@ const renderAttitudeIndicator = (c, display, values) => {
     }
 };
 
-const mechanicalStyleNumber = (value, lowDigitStep = 1) => {
-    const split = (x) => {
+interface MechanicalNumber {
+    digits: number[];
+    scroll: number[];
+    low10: number;
+    lowDigits: number;
+}
+
+const mechanicalStyleNumber = (value: number, lowDigitStep = 1): MechanicalNumber => {
+    const split = (x: number) => {
         const int = Math.trunc(x);
-        const float = (x - int).toFixed(2);
+        const float = parseFloat((x - int).toFixed(2));
         return { int, float };
     };
 
@@ -586,16 +702,16 @@ const mechanicalStyleNumber = (value, lowDigitStep = 1) => {
 };
 
 const renderMechanicalDisplay = (
-    c,
-    w,
-    h,
-    value,
+    c: CanvasRenderingContext2D,
+    w: number,
+    h: number,
+    value: number | null,
     padding = 20,
     right = true,
     wideWinWidth = 2,
     lowDigitStep = 1,
     size = defaultTextSize,
-) => {
+): void => {
     const bg = "black";
     const fg = "white";
 
@@ -644,28 +760,28 @@ const renderMechanicalDisplay = (
         value,
         lowDigitStep,
     );
-    const formatLowDigits = (x) => x.toFixed(0).padStart(lowDigits, "0");
+    const formatLowDigits = (x: number) => x.toFixed(0).padStart(lowDigits, "0");
     for (let i = 0; i < digits.length; i++) {
         const p = right ? i : digits.length - i - 1;
         const y = y0 + scroll[p] * digitH;
-        let d, m1, m2, p1;
+        let d: string | number, m1: string | number, m2: string | number, p1: string | number;
         if (p == 0) {
-            d = digits[p] * lowDigitStep;
-            m1 = (d == 0 ? low10 : d) - lowDigitStep;
-            m2 = (m1 == 0 ? low10 : d) - lowDigitStep;
-            p1 = d + lowDigitStep;
-            if (p1 >= low10) {
-                p1 -= low10;
+            let dNum = digits[p] * lowDigitStep;
+            let m1Num = (dNum == 0 ? low10 : dNum) - lowDigitStep;
+            let m2Num = (m1Num == 0 ? low10 : dNum) - lowDigitStep;
+            let p1Num = dNum + lowDigitStep;
+            if (p1Num >= low10) {
+                p1Num -= low10;
             }
-            let p2 = p1 + lowDigitStep;
-            if (p2 >= low10) {
-                p2 -= low10;
+            let p2Num = p1Num + lowDigitStep;
+            if (p2Num >= low10) {
+                p2Num -= low10;
             }
-            d = formatLowDigits(d);
-            m1 = formatLowDigits(m1);
-            m2 = formatLowDigits(m2);
-            p1 = formatLowDigits(p1);
-            p2 = formatLowDigits(p2);
+            d = formatLowDigits(dNum);
+            m1 = formatLowDigits(m1Num);
+            m2 = formatLowDigits(m2Num);
+            p1 = formatLowDigits(p1Num);
+            let p2 = formatLowDigits(p2Num);
             c.fillText(p2, x, y - digitH * 2);
         } else {
             d = digits[p];
@@ -673,16 +789,16 @@ const renderMechanicalDisplay = (
             m2 = m1 == 0 ? 9 : m1 - 1;
             p1 = d == 9 ? 0 : d + 1;
         }
-        c.fillText(d, x, y);
-        c.fillText(m1, x, y + digitH);
-        c.fillText(m2, x, y + digitH * 2);
-        c.fillText(p1, x, y - digitH);
+        c.fillText(d.toString(), x, y);
+        c.fillText(m1.toString(), x, y + digitH);
+        c.fillText(m2.toString(), x, y + digitH * 2);
+        c.fillText(p1.toString(), x, y - digitH);
         x += sign * digitW;
     }
     c.restore();
 };
 
-const renderIAS = (c, display, values) => {
+const renderIAS = (c: CanvasRenderingContext2D, display: DisplayConfig, values: (number | null)[]): void => {
     const bg = "#555";
     const w = c.canvas.width;
     const h = c.canvas.height;
@@ -691,11 +807,11 @@ const renderIAS = (c, display, values) => {
     c.fillStyle = bg;
     c.fillRect(0, 0, w, h);
 
-    const ias = Math.max(values[0], 0);
+    const ias = Math.max(values[0] || 0, 0);
     renderMechanicalDisplay(c, w, h, ias, 20, true, 1);
 };
 
-const renderAltimeter = (c, display, values) => {
+const renderAltimeter = (c: CanvasRenderingContext2D, display: DisplayConfig, values: (number | null)[]): void => {
     const bg = "#555";
     const fg = "white";
     const w = c.canvas.width;
@@ -723,17 +839,17 @@ const renderAltimeter = (c, display, values) => {
     c.fillStyle = fg;
     if (isNumber(vs)) {
         c.font = `12px '${defaultFont}'`;
-        c.fillText(Math.trunc(vs / 10) * 10, vsiX + 2, vsiY + vsiH * 0.8);
+        c.fillText((Math.trunc(vs / 10) * 10).toString(), vsiX + 2, vsiY + vsiH * 0.8);
     }
     const altB = values[2];
     if (isNumber(altB)) {
         c.fillStyle = "cyan";
         c.font = `14px '${defaultFont}'`;
-        c.fillText(altB, 15, 18);
+        c.fillText(altB.toString(), 15, 18);
     }
 };
 
-const renderHSI = (c, display, values) => {
+const renderHSI = (c: CanvasRenderingContext2D, display: DisplayConfig, values: (number | null)[]): void => {
     const bg = "black";
     const fg = "white";
     const w = c.canvas.width;
@@ -751,9 +867,9 @@ const renderHSI = (c, display, values) => {
     const cdiR = 0.4 * r;
     const vdefR = 3;
 
-    const hdg = deg2Rad(values[0]);
-    const hdgB = deg2Rad(values[1]);
-    let src = isObject(display.navs) ? display.navs[values[2]] : null;
+    const hdg = deg2Rad(values[0] || 0);
+    const hdgB = values[1] ? deg2Rad(values[1]) : null;
+    let src = isObject(display.navs) && values[2] != null ? display.navs[values[2]] : null;
     if (!isObject(src)) {
         src = null;
     }
@@ -761,14 +877,14 @@ const renderHSI = (c, display, values) => {
         display.pressed = false;
         xplane.sendCommand(src.next.toString());
     }
-    const crs = src ? deg2Rad(values[src.crs]) : null;
+    const crs = src ? deg2Rad(values[src.crs] || 0) : null;
     const fromto = src ? values[src.fromto] : null;
-    let def = src ? Math.min(Math.max(values[src.def], -3), 3) : null;
+    let def = src ? Math.min(Math.max(values[src.def] || 0, -3), 3) : null;
     if (!isNumber(def)) {
         def = 0;
     }
     const received = src ? values[src.received] : null;
-    const polarXY = (theta, r) => {
+    const polarXY = (theta: number, r: number) => {
         const t = -theta - Math.PI / 2;
         const dx = r * Math.cos(t);
         const dy = -r * Math.sin(t);
@@ -806,7 +922,7 @@ const renderHSI = (c, display, values) => {
 
         c.beginPath();
         c.lineWidth = 3;
-        c.strokeStyle = src.color ? src.color : "magenta";
+        c.strokeStyle = src?.color ? src.color : "magenta";
 
         if (isNumber(received) && received != 0) {
             // draw CDI needle
@@ -846,7 +962,7 @@ const renderHSI = (c, display, values) => {
         c.rotate(-crs);
     }
 
-    if (isNumber(hdgB)) {
+    if (hdgB !== null && isNumber(hdgB)) {
         const bugW = 4;
         const bugY1 = -(r - 5);
         const bugY0 = -(r - 8);
@@ -868,7 +984,7 @@ const renderHSI = (c, display, values) => {
     c.stroke();
 };
 
-const renderBarGauge = (c, display, values_) => {
+const renderBarGauge = (c: CanvasRenderingContext2D, display: DisplayConfig, values_: (number | null)[]): void => {
     const bg = "black";
     const fg = "white";
     const w = c.canvas.width;
@@ -882,7 +998,7 @@ const renderBarGauge = (c, display, values_) => {
     const slotHeight = 60;
     const barWidth = slotWidth * 0.6;
 
-    const { text, values } = formatValues(display, values_, display.fmt.length);
+    const { text, values } = formatValues(display, values_, display.fmt ? (Array.isArray(display.fmt) ? display.fmt.length : 1) : 1);
     const label = getLabels(display);
     // TODO: cache this
     const { font, color_fg } = getTextStyles({
@@ -898,8 +1014,8 @@ const renderBarGauge = (c, display, values_) => {
     for (let i = 0; i < text.length; i++) {
         c.lineWidth = 1;
         c.strokeRect(x, y - barWidth, slotHeight, barWidth);
-        const r = Math.max(Math.min(values[i], 1), 0);
-        c.fillStyle = color_fg[i] ? color_fg[i] : fg;
+        const r = Math.max(Math.min(values[i] || 0, 1), 0);
+        c.fillStyle = color_fg[i] || fg;
         const xx = x + slotHeight * (1 - r);
         c.fillRect(xx + 1, y - barWidth + 1, slotHeight * r - 1, barWidth - 1);
         c.lineWidth = 2;
@@ -914,8 +1030,8 @@ const renderBarGauge = (c, display, values_) => {
     }
 };
 
-const drawGauge = (key, label, values) => {
-    const types = {
+const drawGauge = (key: number, label: KeyConfig, values: (number | null)[]): void => {
+    const types: Record<string, (c: CanvasRenderingContext2D, display: DisplayConfig, values: (number | null)[]) => void> = {
         meter: renderMeterGauge,
         text: renderTextGauge,
         bar: renderBarGauge,
@@ -925,18 +1041,18 @@ const drawGauge = (key, label, values) => {
         hsi: renderHSI,
     };
     const display = label.display;
-    if (display.type == null) {
+    if (!display || display.type == null) {
         return;
     }
     if (types[display.type]) {
         renderTasks.push({
             key,
-            func: (c) => types[display.type](c, display, values, pressed),
+            func: (c) => types[display.type!](c, display, values),
         });
     }
 };
 
-const resetRendering = async () => {
+const resetRendering = async (): Promise<void> => {
     for (let i = 0; i < renderStop.length; i++) {
         renderStop[i]();
     }
@@ -944,31 +1060,31 @@ const resetRendering = async () => {
     if (renderTasks) {
         await renderTasks.pause();
     }
-    renderTasks = queue(async (e) => {
+    renderTasks = queue(async (e: RenderTask) => {
         const { key, func } = e;
-        await device.drawKey(key, func);
+        await device!.drawKey(key, func);
     });
 };
 
-const loadPage = async (page) => {
+const loadPage = async (page: PageConfig): Promise<void> => {
     await resetRendering();
     // page is not null
     const { left, right, keys } = page;
-    let pms = [];
-    pms.push(drawSideKnobs("left", left));
-    pms.push(drawSideKnobs("right", right));
+    let pms: Promise<void>[] = [];
+    pms.push(drawSideKnobs("left", left as KnobConfig[]));
+    pms.push(drawSideKnobs("right", right as KnobConfig[]));
     for (let i = 0; i < 12; i++) {
         const conf = Array.isArray(keys) && keys.length > i ? keys[i] : null;
         pms.push(drawKey(i, conf, false));
         if (isObject(conf) && conf.display != null) {
-            conf.renderStart();
+            (conf as any).renderStart();
         }
     }
     await Promise.all(pms);
 };
 
 // Observe connect events
-device.on("connect", async () => {
+device!.on("connect", async () => {
     console.info("connected");
     /*
     for (let i = 3600; i > 1000; i -= 0.1) {
@@ -983,7 +1099,7 @@ device.on("connect", async () => {
         const keys = page.keys;
         const color =
             isObject(page) && page.color != null ? page.color : "white";
-        await device.setButtonColor({ id: i, color });
+        await device!.setButtonColor({ id: i, color });
         // subscribe the data feeds
         for (let j = 0; j < 12; j++) {
             const conf =
@@ -993,7 +1109,7 @@ device.on("connect", async () => {
                 conf.display != null &&
                 Array.isArray(conf.display.source)
             ) {
-                let values = [];
+                let values: (number | null)[] = [];
                 //conf.fps = 0;
                 for (let k = 0; k < conf.display.source.length; k++) {
                     values.push(null);
@@ -1004,21 +1120,21 @@ device.on("connect", async () => {
 
                 const msPerFrame = 1000 / freq;
                 conf.display.pressed = false;
-                conf.renderStart = () => {
+                (conf as any).renderStart = () => {
                     let enabled = true;
                     let startTime = new Date();
-                    let timeout;
+                    let timeout: NodeJS.Timeout;
                     function draw() {
                         if (!enabled) {
                             return;
                         }
-                        drawGauge(j, conf, values);
+                        drawGauge(j, conf!, values);
                         //conf.fps++;
                         let frameTime = msPerFrame;
-                        const elapsedTime = new Date() - startTime;
+                        const elapsedTime = new Date().getTime() - startTime.getTime();
                         if (elapsedTime > 1000) {
                             startTime = new Date();
-                            conf.fps = 0;
+                            (conf as any).fps = 0;
                         } else if (elapsedTime + frameTime > 1000) {
                             frameTime = 1000 - elapsedTime;
                         }
@@ -1038,7 +1154,7 @@ device.on("connect", async () => {
                         await xplane.subscribeDataRef(
                             xplane_dataref,
                             freq,
-                            async (v) => (values[k] = v),
+                            async (v: number) => (values[k] = v),
                         );
                     }
                 }
@@ -1048,31 +1164,31 @@ device.on("connect", async () => {
     await loadPage(getCurrentPage());
 });
 
-const handleKnobEvent = async (id) => {
+const handleKnobEvent = async (id: string): Promise<KnobConfig | undefined> => {
     const { left, right } = getCurrentPage();
-    let pos = { T: 0, C: 1, B: 2 }[id.substring(4, 5)];
-    let side = { L: ["left", left], R: ["right", right] }[id.substring(5, 6)];
-    if ((side[0] == "left" && !left) || (side[0] == "right" && !right)) {
+    let pos = { T: 0, C: 1, B: 2 }[id.substring(4, 5) as 'T' | 'C' | 'B'];
+    let side = { L: ["left", left], R: ["right", right] }[id.substring(5, 6) as 'L' | 'R'];
+    if (!side || (side[0] == "left" && !left) || (side[0] == "right" && !right)) {
         return;
     }
     let mask = [false, false, false];
     mask[pos] = true;
-    await drawSideKnobs(side[0], side[1], mask);
+    await drawSideKnobs(side[0] as "left" | "right", side[1] as KnobConfig[], mask);
     if (!highlighted.has(id)) {
         highlighted.add(id);
         setTimeout(() => {
-            drawSideKnobs(side[0], side[1], [false, false, false]);
+            drawSideKnobs(side[0] as "left" | "right", side[1] as KnobConfig[], [false, false, false]);
             highlighted.delete(id);
         }, 200);
     }
-    return side[1][pos];
+    return (side[1] as KnobConfig[]) ? (side[1] as KnobConfig[])[pos] : undefined;
 };
 
-const takeAction = (labeled, type, haptics) => {
+const takeAction = (labeled: KnobConfig | undefined, type: string, haptics: boolean): void => {
     if (!isObject(labeled)) {
         return;
     }
-    let actionSpec = labeled[type];
+    let actionSpec = (labeled as any)[type];
     if (actionSpec == null) {
         return;
     }
@@ -1080,12 +1196,12 @@ const takeAction = (labeled, type, haptics) => {
         xplane.sendCommand(actionSpec.xplane_cmd);
     }
     if (haptics) {
-        device.vibrate(HAPTIC.REV_FASTEST);
+        device!.vibrate(HAPTIC.REV_FASTEST);
     }
 };
 
 // React to button presses
-device.on("down", async ({ id }) => {
+device!.on("down", async ({ id }) => {
     if (isNumber(id)) {
         if (id >= pages.length) {
             return;
@@ -1094,16 +1210,16 @@ device.on("down", async ({ id }) => {
         currentPage = id;
         await loadPage(getCurrentPage());
     } else {
-        takeAction(await handleKnobEvent(id), "pressed", false);
+        takeAction(await handleKnobEvent(id as string), "pressed", false);
     }
 });
 
 // React to knob turns
-device.on("rotate", async ({ id, delta }) => {
-    takeAction(await handleKnobEvent(id), delta > 0 ? "inc" : "dec", false);
+device!.on("rotate", async ({ id, delta }) => {
+    takeAction(await handleKnobEvent(id as string), (delta || 0) > 0 ? "inc" : "dec", false);
 });
 
-const clearStaleButton = async (touches) => {
+const clearStaleButton = async (touches: TouchEvent[]): Promise<void> => {
     const s = new Set(
         touches.map((o) => o.target.key).filter((k) => k !== undefined),
     );
@@ -1118,7 +1234,8 @@ const clearStaleButton = async (touches) => {
     }
 };
 
-device.on("touchstart", async ({ changedTouches, touches }) => {
+device!.on("touchstart", async ({ changedTouches }) => {
+    if (!changedTouches) return;
     clearStaleButton(changedTouches);
     const target = changedTouches[0].target;
     if (target.key === undefined) {
@@ -1128,15 +1245,17 @@ device.on("touchstart", async ({ changedTouches, touches }) => {
     const key = getKeyConf(target.key);
     if (key) {
         await drawKey(target.key, key, true);
-        takeAction(key, "pressed", true);
+        takeAction(key as any, "pressed", true);
     }
 });
 
-device.on("touchmove", ({ changedTouches, touches }) => {
+device!.on("touchmove", ({ changedTouches }) => {
+    if (!changedTouches) return;
     clearStaleButton(changedTouches);
 });
 
-device.on("touchend", async ({ changedTouches, touches }) => {
+device!.on("touchend", async ({ changedTouches }) => {
+    if (!changedTouches) return;
     clearStaleButton(changedTouches);
     const target = changedTouches[0].target;
     if (target.key === undefined) {
@@ -1151,7 +1270,7 @@ device.on("touchend", async ({ changedTouches, touches }) => {
 
 process.on("SIGINT", async () => {
     await resetRendering();
-    await device.close();
+    await device!.close();
     await xplane.close();
     process.exit();
 });

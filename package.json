@@ -1,26 +1,42 @@
 {
   "name": "loupe-flightdeck",
-  "version": "0.0.15",
+  "version": "0.0.16",
+  "type": "module",
   "description": "Turn your stream deck into a flight deck!",
   "repository": {
     "type": "git",
     "url": "https://github.com/Determinant/loupe-flightdeck"
   },
   "engines": {
-    "node": ">18 <24.0"
+    "node": ">=20"
   },
   "dependencies": {
     "async": "^3.2.6",
-    "canvas": ">=3.1",
-    "loupe-flightdeck": "^0.0.15",
-    "loupedeck": ">=7.0",
+    "canvas": "^3.2.0",
+    "loupedeck": "^7.0.3",
     "yaml": "^2.5.0",
     "yargs": "^17.7.2"
   },
-  "bin": "./app.mjs",
+  "bin": "dist/app.js",
+  "files": [
+    "dist",
+    "profile.yaml",
+    "font.ttf",
+    "50-loupedeck.rules"
+  ],
+  "scripts": {
+    "build": "tsc && cp font.ttf profile.yaml 50-loupedeck.rules dist/",
+    "start": "node --import tsx/esm app.ts",
+    "dev": "node --import tsx/esm --watch app.ts"
+  },
   "devDependencies": {
     "@eslint/js": "^9.9.1",
+    "@types/async": "^3.2.24",
+    "@types/node": "^24.1.0",
+    "@types/yargs": "^17.0.33",
     "eslint": "^9.9.1",
-    "globals": "^15.9.0"
+    "globals": "^15.9.0",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3"
   }
 }
