@@ -1,6 +1,6 @@
 {
   "name": "loupe-flightdeck",
-  "version": "0.0.16",
+  "version": "0.0.19",
   "type": "module",
   "description": "Turn your stream deck into a flight deck!",
   "repository": {
@@ -14,6 +14,7 @@
     "async": "^3.2.6",
     "canvas": "^3.2.0",
     "loupedeck": "^7.0.3",
+    "patch-package": "^8.0.1",
     "yaml": "^2.5.0",
     "yargs": "^17.7.2"
   },
@@ -22,12 +23,14 @@
     "dist",
     "profile.yaml",
     "font.ttf",
-    "50-loupedeck.rules"
+    "50-loupedeck.rules",
+    "patches"
   ],
   "scripts": {
     "build": "tsc && cp font.ttf profile.yaml 50-loupedeck.rules dist/",
     "start": "node --import tsx/esm app.ts",
-    "dev": "node --import tsx/esm --watch app.ts"
+    "dev": "node --import tsx/esm --watch app.ts",
+    "postinstall": "patch-package"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.1",

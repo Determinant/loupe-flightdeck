@@ -137,13 +137,13 @@ interface AppArgs {
 const args = yargs(process.argv.slice(2))
     .usage("./app.mjs [--xplane-host <host>] [--xplane-port <port>] [profile YAML file]")
     .options({
-        'xplane-port': { default: 49000, type: 'number'},
-        'xplane-host': { default: "localhost", type: 'string'},
+        'xplane-port': { default: 49000, type: 'number' },
+        'xplane-host': { default: "localhost", type: 'string' },
     }).parse() as Arguments<AppArgs>;
 const xplanePort = isNumber(args['xplane-port']) ? args['xplane-port'] : 49000;
 const xplaneHost = args['xplane-host'];
 const profile_file = args._[0] ? args._[0] : `${import.meta.dirname}/profile.yaml`;
-const pages: PageConfig[] = parse(await readFile(profile_file,"utf8"));
+const pages: PageConfig[] = parse(await readFile(profile_file, "utf8"));
 
 // state of the controller
 let currentPage =
@@ -310,10 +310,10 @@ const renderMultiLineText = (c: CanvasRenderingContext2D, x0: number, y0: number
             Math.max(
                 0,
                 w -
-                    (ms[i].actualBoundingBoxRight -
-                        ms[i].actualBoundingBoxLeft),
+                (ms[i].actualBoundingBoxRight -
+                    ms[i].actualBoundingBoxLeft),
             ) /
-                2;
+            2;
         const textHeight =
             ms[i].actualBoundingBoxAscent - ms[i].actualBoundingBoxDescent;
         const y = yBase + textHeight;
@@ -683,15 +683,19 @@ const mechanicalStyleNumber = (value: number, lowDigitStep = 1): MechanicalNumbe
     value /= low10;
     while (true) {
         t = split(value % 10);
+        if (value < 1) {
+            if (value > 0.99) {
+                scroll.push(scroll[i]);
+                digits.push(0);
+            }
+            break;
+        }
         if (
             ((i > 0 && digits[i] == 9) || (i == 0 && digits[i] == lowMax)) &&
             scroll[i] > 0
         ) {
             scroll.push(scroll[i]);
         } else {
-            if (value < 1) {
-                break;
-            }
             scroll.push(0);
         }
         digits.push(t.int);
@@ -761,6 +765,7 @@ const renderMechanicalDisplay = (
         lowDigitStep,
     );
     const formatLowDigits = (x: number) => x.toFixed(0).padStart(lowDigits, "0");
+    x -= (lowDigits - 1) * 12;
     for (let i = 0; i < digits.length; i++) {
         const p = right ? i : digits.length - i - 1;
         const y = y0 + scroll[p] * digitH;
@@ -821,30 +826,30 @@ const renderAltimeter = (c: CanvasRenderingContext2D, display: DisplayConfig, va
     c.fillStyle = bg;
     c.fillRect(0, 0, w, h);
 
-    renderMechanicalDisplay(c, w, h, values[0], 5, false, 2, 20, defaultTextSize * 0.9);
+    renderMechanicalDisplay(c, w * 0.6, h, values[0], 5, true, 2, 20, defaultTextSize * 0.8);
 
     // draw floating vsi window
     const vs = values[1];
-    const vsiBgX = w / 2 + 4;
+    const vsiBgX = w * 0.6 + 2;
     c.fillRect(vsiBgX, 0, w - vsiBgX, h);
     c.fillStyle = "#000";
     const vsiH = 20;
     const vsiX = vsiBgX + 2;
     const vsiY =
         (1 -
-            (Math.min(Math.max(isNumber(vs) ? vs : 0, -2000), 2000) + 2000) /
-                4000) *
+            (Math.min(Math.max(isNumber(vs) ? vs : 0, -4000), 4000) + 4000) /
+            8000) *
         (h - vsiH);
     c.fillRect(vsiX, vsiY, w - vsiX, vsiH);
     c.fillStyle = fg;
     if (isNumber(vs)) {
-        c.font = `12px '${defaultFont}'`;
+        c.font = `8px '${defaultFont}'`;
         c.fillText((Math.trunc(vs / 10) * 10).toString(), vsiX + 2, vsiY + vsiH * 0.8);
     }
     const altB = values[2];
     if (isNumber(altB)) {
         c.fillStyle = "cyan";
-        c.font = `14px '${defaultFont}'`;
+        c.font = `12px '${defaultFont}'`;
         c.fillText(altB.toString(), 15, 18);
     }
 };
