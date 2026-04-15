@@ -1,122 +1,8 @@
-#!/usr/bin/env node
+import { CanvasRenderingContext2D } from "canvas";
+import { DisplayConfig, KeyConfig, KnobConfig, TextStyles } from "./config.js";
 
-import { registerFont, CanvasRenderingContext2D, Canvas } from "canvas";
-import yargs from "yargs/yargs";
-import { Arguments } from "yargs";
-
-const defaultFont = "B612"; // font.ttf uses the font from https://b612-font.com/
-if (process.platform == "linux") {
-    process.env.FONTCONFIG_FILE = import.meta.dirname;
-    //console.warn(
-    //    "node-canvas does not support directly using font file in Linux (see https://github.com/Automattic/node-canvas/issues/2097#issuecomment-1803950952), please copy ./ocr-a-ext.ttf in this folder to your local font folder (~/.fonts/) or install it system-wide.",
-    //);
-}
-registerFont(`${import.meta.dirname}/font.ttf`, {
-    family: defaultFont,
-});
-
-import { discover, HAPTIC, LoupedeckDevice } from "loupedeck";
-import { readFile } from "fs/promises";
-import { parse } from "yaml";
-import { queue, QueueObject } from "async";
-import { XPlane } from "./xplane.js";
-
+export const defaultFont = "B612";
 const defaultTextSize = 18;
-
-interface PageConfig {
-    default?: number;
-    keys?: KeyConfig[];
-    left?: KnobConfig[];
-    right?: KnobConfig[];
-    color?: string;
-}
-
-interface KeyConfig {
-    label?: string | string[];
-    size?: number | number[];
-    color_bg?: string | string[];
-    color_fg?: string | string[];
-    sep?: number;
-    display?: DisplayConfig;
-    pressed?: ActionSpec;
-}
-
-interface KnobConfig {
-    label?: string | string[];
-    size?: number | number[];
-    color_bg?: string | string[];
-    color_fg?: string | string[];
-    sep?: number;
-    pressed?: ActionSpec;
-    inc?: ActionSpec;
-    dec?: ActionSpec;
-}
-
-interface ActionSpec {
-    xplane_cmd?: string;
-}
-
-interface DisplayConfig {
-    type?: string;
-    source?: SourceConfig[];
-    freq?: number;
-    min?: number;
-    max?: number;
-    stops?: StopConfig[];
-    fmt?: string | string[];
-    exp?: string | string[];
-    size?: number | number[];
-    color_fg?: string | string[];
-    color_bg?: string | string[];
-    label?: string | string[];
-    navs?: Record<string, NavConfig>;
-    pressed?: boolean;
-}
-
-interface SourceConfig {
-    xplane_dataref?: string;
-}
-
-interface StopConfig {
-    value_begin: number;
-    value_end: number;
-    color: string;
-}
-
-interface NavConfig {
-    def: number;
-    received: number;
-    crs: number;
-    fromto: number;
-    next: string;
-    color?: string;
-}
-
-interface TextStyles {
-    font: string[];
-    color_bg: (string | undefined)[];
-    color_fg: (string | undefined)[];
-}
-
-interface RenderTask {
-    key: number;
-    func: (c: CanvasRenderingContext2D) => void;
-}
-
-interface TouchTarget {
-    key?: number;
-}
-
-interface TouchEvent {
-    target: TouchTarget;
-}
-
-interface DeviceEvent {
-    id: string | number;
-    delta?: number;
-    changedTouches?: TouchEvent[];
-    touches?: TouchEvent[];
-}
 
 const isNumber = (x: any): x is number => {
     return x != null && !isNaN(x);
@@ -127,63 +13,6 @@ const isObject = (obj: any): obj is Record<string, any> => {
 };
 
 const deg2Rad = (x: number): number => (x / 180) * Math.PI;
-
-interface AppArgs {
-    'xplane-port': number;
-    'xplane-host': string;
-    _: string[];
-}
-
-const args = yargs(process.argv.slice(2))
-    .usage("./app.mjs [--xplane-host <host>] [--xplane-port <port>] [profile YAML file]")
-    .options({
-        'xplane-port': { default: 49000, type: 'number' },
-        'xplane-host': { default: "localhost", type: 'string' },
-    }).parse() as Arguments<AppArgs>;
-const xplanePort = isNumber(args['xplane-port']) ? args['xplane-port'] : 49000;
-const xplaneHost = args['xplane-host'];
-const profile_file = args._[0] ? args._[0] : `${import.meta.dirname}/profile.yaml`;
-const pages: PageConfig[] = parse(await readFile(profile_file, "utf8"));
-
-// state of the controller
-let currentPage =
-    isObject(pages[0]) && pages[0].default != null ? pages[0].default : 0;
-let pressed = new Set<number>();
-let highlighted = new Set<string>();
-
-// detects and opens first connected device
-let device: LoupedeckDevice | undefined;
-
-// Render related variables
-let renderStop: (() => void)[] = [];
-let renderTasks: QueueObject<RenderTask>;
-
-const xplane = new XPlane(xplaneHost, xplanePort);
-console.log(`Connecting to X-Plane at ${xplaneHost}:${xplanePort}`);
-
-while (!device) {
-    try {
-        device = await discover();
-    } catch (e) {
-        console.error(`${e}. retry in 5 secs`);
-        await new Promise((res) => setTimeout(res, 5000));
-    }
-}
-
-const getCurrentPage = (): PageConfig => {
-    return pages[currentPage] || {};
-};
-
-const getKeyConf = (i: number): KeyConfig | null => {
-    const keys = getCurrentPage().keys;
-    if (keys == null) {
-        return null;
-    }
-    if (Array.isArray(keys) && i < keys.length) {
-        return keys[i];
-    }
-    return null;
-};
 
 const getTextStyles = (conf: KeyConfig | KnobConfig | DisplayConfig): TextStyles => {
     // conf must be non-null
@@ -264,7 +93,7 @@ const formatValues = (conf: DisplayConfig, values_: (number | null)[], n = 1): {
     return { text, values };
 };
 
-const formatColors = (color_name: string, conf: DisplayConfig, values: (number | null)[], n = 1): string[] => {
+const formatColors = (colorName: string, conf: DisplayConfig, values: (number | null)[], n = 1): string[] => {
     const f = (fmt?: string) => {
         if (fmt) {
             return Function("$d", `"use strict"; return(\`${fmt}\`);`)(values);
@@ -274,9 +103,9 @@ const formatColors = (color_name: string, conf: DisplayConfig, values: (number |
 
     let last: string | undefined;
     let color: string[] = [];
-    const formatter = Array.isArray((conf as any)[color_name])
-        ? (conf as any)[color_name]
-        : [(conf as any)[color_name]];
+    const formatter = Array.isArray((conf as any)[colorName])
+        ? (conf as any)[colorName]
+        : [(conf as any)[colorName]];
     for (let i = 0; i < n; i++) {
         let fmt = formatter[i] || last;
         color.push(f(fmt));
@@ -325,95 +154,90 @@ const renderMultiLineText = (c: CanvasRenderingContext2D, x0: number, y0: number
     c.restore();
 };
 
-const drawKey = async (id: number, conf: KeyConfig | null, pressed: boolean): Promise<void> => {
-    if (conf && isObject(conf.display)) {
-        // not an input, but a display gauge
-        conf.display.pressed = pressed;
-        return;
+export const renderKey = (
+    c: CanvasRenderingContext2D,
+    conf: KeyConfig | null,
+    pressed: boolean,
+): void => {
+    const padding = 10;
+    const bg = pressed ? "white" : "black";
+    const fg = pressed ? "black" : "white";
+    const w = c.canvas.width;
+    const h = c.canvas.height;
+
+    // draw background
+    c.fillStyle = bg;
+    c.fillRect(0, 0, w, h);
+    c.fillStyle = fg;
+    c.lineWidth = 2;
+    c.strokeStyle = fg;
+    c.strokeRect(padding, padding, w - padding * 2, h - padding * 2);
+    if (conf != null) {
+        const labels = getLabels(conf);
+        const styles = getTextStyles(conf);
+        for (let i = 0; i < labels.length; i++) {
+            styles.color_fg[i] = fg;
+        }
+        renderMultiLineText(c, 0, 0, w, h, labels, styles, conf);
     }
+    // otherwise the empty key style is still drawn
+};
 
-    await device!.drawKey(id, (c: any) => {
-        const padding = 10;
-        const bg = pressed ? "white" : "black";
-        const fg = pressed ? "black" : "white";
+export const renderSideKnobs = (
+    c: CanvasRenderingContext2D,
+    confs: KnobConfig[] | undefined,
+    light: string,
+    highlight?: boolean[],
+): void => {
+    const mask = highlight || [false, false, false];
+    for (let i = 0; i < 3; i++) {
+        const hl = mask[i];
+        const y_offset = (i * c.canvas.height) / 3;
+        const x_padding = 8;
+        const y_padding = 3;
+        const bg = hl ? light : "black";
+        const fg = hl ? "black" : light;
         const w = c.canvas.width;
-        const h = c.canvas.height;
-
+        const h = c.canvas.height / 3;
         // draw background
         c.fillStyle = bg;
-        c.fillRect(0, 0, w, h);
+        c.fillRect(0, y_offset, w, h);
         c.fillStyle = fg;
         c.lineWidth = 2;
         c.strokeStyle = fg;
-        c.strokeRect(padding, padding, w - padding * 2, h - padding * 2);
-        if (conf != null) {
-            const labels = getLabels(conf);
-            const styles = getTextStyles(conf);
-            for (let i = 0; i < labels.length; i++) {
-                styles.color_fg[i] = fg;
-            }
-            renderMultiLineText(c, 0, 0, w, h, labels, styles, conf);
-        }
-        // otherwise the empty key style is still drawn
-    });
-};
-
-const drawSideKnobs = async (side: "left" | "right", confs: KnobConfig[] | undefined, highlight?: boolean[]): Promise<void> => {
-    await device!.drawScreen(side, (c: any) => {
-        const page = getCurrentPage();
-        const light = page.color != null ? page.color : "white";
-        if (!highlight) {
-            highlight = [false, false, false];
-        }
-        for (let i = 0; i < 3; i++) {
-            const hl = highlight[i];
-            const y_offset = (i * c.canvas.height) / 3;
-            const x_padding = 8;
-            const y_padding = 3;
-            const bg = hl ? light : "black";
-            const fg = hl ? "black" : light;
-            const w = c.canvas.width;
-            const h = c.canvas.height / 3;
-            // draw background
-            c.fillStyle = bg;
-            c.fillRect(0, y_offset, w, h);
-            c.fillStyle = fg;
-            c.lineWidth = 2;
-            c.strokeStyle = fg;
-            c.strokeRect(
-                x_padding,
-                y_padding + y_offset,
-                w - x_padding * 2,
-                h - y_padding * 2,
-            );
-            if (Array.isArray(confs) && confs.length > i && confs[i] != null) {
-                const { font, color_bg } = getTextStyles(confs[i]);
-                const text = getLabels(confs[i]);
-                if (color_bg[0]) {
-                    c.fillStyle = color_bg[0];
-                    c.fillRect(
-                        x_padding + 2,
-                        y_padding + y_offset + 2,
-                        w - x_padding * 2 - 2,
-                        h - y_padding * 2 - 2,
-                    );
-                }
-                c.translate(w, y_offset);
-                c.rotate(Math.PI / 2);
-                renderMultiLineText(
-                    c,
-                    0,
-                    0,
-                    h,
-                    w,
-                    text,
-                    { font, color_fg: [fg], color_bg: [] },
-                    confs[i],
+        c.strokeRect(
+            x_padding,
+            y_padding + y_offset,
+            w - x_padding * 2,
+            h - y_padding * 2,
+        );
+        if (Array.isArray(confs) && confs.length > i && confs[i] != null) {
+            const { font, color_bg } = getTextStyles(confs[i]);
+            const text = getLabels(confs[i]);
+            if (color_bg[0]) {
+                c.fillStyle = color_bg[0];
+                c.fillRect(
+                    x_padding + 2,
+                    y_padding + y_offset + 2,
+                    w - x_padding * 2 - 2,
+                    h - y_padding * 2 - 2,
                 );
-                c.resetTransform();
             }
+            c.translate(w, y_offset);
+            c.rotate(Math.PI / 2);
+            renderMultiLineText(
+                c,
+                0,
+                0,
+                h,
+                w,
+                text,
+                { font, color_fg: [fg], color_bg: [] },
+                confs[i],
+            );
+            c.resetTransform();
         }
-    });
+    }
 };
 
 const renderTextGauge = (c: CanvasRenderingContext2D, display: DisplayConfig, values_: (number | null)[]): void => {
@@ -854,7 +678,12 @@ const renderAltimeter = (c: CanvasRenderingContext2D, display: DisplayConfig, va
     }
 };
 
-const renderHSI = (c: CanvasRenderingContext2D, display: DisplayConfig, values: (number | null)[]): void => {
+const renderHSI = (
+    c: CanvasRenderingContext2D,
+    display: DisplayConfig,
+    values: (number | null)[],
+    onHsiSourceChange?: (command: string) => void,
+): void => {
     const bg = "black";
     const fg = "white";
     const w = c.canvas.width;
@@ -880,7 +709,7 @@ const renderHSI = (c: CanvasRenderingContext2D, display: DisplayConfig, values: 
     }
     if (display.pressed && src) {
         display.pressed = false;
-        xplane.sendCommand(src.next.toString());
+        onHsiSourceChange?.(src.next.toString());
     }
     const crs = src ? deg2Rad(values[src.crs] || 0) : null;
     const fromto = src ? values[src.fromto] : null;
@@ -1035,247 +864,25 @@ const renderBarGauge = (c: CanvasRenderingContext2D, display: DisplayConfig, val
     }
 };
 
-const drawGauge = (key: number, label: KeyConfig, values: (number | null)[]): void => {
-    const types: Record<string, (c: CanvasRenderingContext2D, display: DisplayConfig, values: (number | null)[]) => void> = {
+export type GaugeRenderer = (
+    c: CanvasRenderingContext2D,
+    display: DisplayConfig,
+    values: (number | null)[],
+) => void;
+
+interface GaugeRendererOptions {
+    onHsiSourceChange?: (command: string) => void;
+}
+
+export const getGaugeRenderers = (options: GaugeRendererOptions = {}): Record<string, GaugeRenderer> => {
+    const { onHsiSourceChange } = options;
+    return {
         meter: renderMeterGauge,
         text: renderTextGauge,
         bar: renderBarGauge,
         attitude: renderAttitudeIndicator,
         ias: renderIAS,
         alt: renderAltimeter,
-        hsi: renderHSI,
+        hsi: (c, display, values) => renderHSI(c, display, values, onHsiSourceChange),
     };
-    const display = label.display;
-    if (!display || display.type == null) {
-        return;
-    }
-    if (types[display.type]) {
-        renderTasks.push({
-            key,
-            func: (c) => types[display.type!](c, display, values),
-        });
-    }
 };
-
-const resetRendering = async (): Promise<void> => {
-    for (let i = 0; i < renderStop.length; i++) {
-        renderStop[i]();
-    }
-    renderStop = [];
-    if (renderTasks) {
-        await renderTasks.pause();
-    }
-    renderTasks = queue(async (e: RenderTask) => {
-        const { key, func } = e;
-        await device!.drawKey(key, func);
-    });
-};
-
-const loadPage = async (page: PageConfig): Promise<void> => {
-    await resetRendering();
-    // page is not null
-    const { left, right, keys } = page;
-    let pms: Promise<void>[] = [];
-    pms.push(drawSideKnobs("left", left as KnobConfig[]));
-    pms.push(drawSideKnobs("right", right as KnobConfig[]));
-    for (let i = 0; i < 12; i++) {
-        const conf = Array.isArray(keys) && keys.length > i ? keys[i] : null;
-        pms.push(drawKey(i, conf, false));
-        if (isObject(conf) && conf.display != null) {
-            (conf as any).renderStart();
-        }
-    }
-    await Promise.all(pms);
-};
-
-// Observe connect events
-device!.on("connect", async () => {
-    console.info("connected");
-    /*
-    for (let i = 3600; i > 1000; i -= 0.1) {
-        await device.drawKey(0, (c) => {
-            renderAltimeter(c, null, [i, 500]);
-        });
-        await new Promise((res) => setTimeout(res, 10));
-    }
-    */
-    for (let i = 0; i < pages.length; i++) {
-        const page = pages[i] || {};
-        const keys = page.keys;
-        const color =
-            isObject(page) && page.color != null ? page.color : "white";
-        await device!.setButtonColor({ id: i, color });
-        // subscribe the data feeds
-        for (let j = 0; j < 12; j++) {
-            const conf =
-                Array.isArray(keys) && keys.length > j ? keys[j] : null;
-            if (
-                isObject(conf) &&
-                conf.display != null &&
-                Array.isArray(conf.display.source)
-            ) {
-                let values: (number | null)[] = [];
-                //conf.fps = 0;
-                for (let k = 0; k < conf.display.source.length; k++) {
-                    values.push(null);
-                }
-                const freq = isNumber(conf.display.freq)
-                    ? conf.display.freq
-                    : 1;
-
-                const msPerFrame = 1000 / freq;
-                conf.display.pressed = false;
-                (conf as any).renderStart = () => {
-                    let enabled = true;
-                    let startTime = new Date();
-                    let timeout: NodeJS.Timeout;
-                    function draw() {
-                        if (!enabled) {
-                            return;
-                        }
-                        drawGauge(j, conf!, values);
-                        //conf.fps++;
-                        let frameTime = msPerFrame;
-                        const elapsedTime = new Date().getTime() - startTime.getTime();
-                        if (elapsedTime > 1000) {
-                            startTime = new Date();
-                            (conf as any).fps = 0;
-                        } else if (elapsedTime + frameTime > 1000) {
-                            frameTime = 1000 - elapsedTime;
-                        }
-                        timeout = setTimeout(draw, frameTime);
-                    }
-                    draw();
-                    renderStop.push(() => {
-                        enabled = false;
-                        clearTimeout(timeout);
-                    });
-                };
-
-                for (let k = 0; k < conf.display.source.length; k++) {
-                    const source = conf.display.source[k];
-                    const xplane_dataref = source.xplane_dataref;
-                    if (xplane_dataref != null) {
-                        await xplane.subscribeDataRef(
-                            xplane_dataref,
-                            freq,
-                            async (v: number) => (values[k] = v),
-                        );
-                    }
-                }
-            }
-        }
-    }
-    await loadPage(getCurrentPage());
-});
-
-const handleKnobEvent = async (id: string): Promise<KnobConfig | undefined> => {
-    const { left, right } = getCurrentPage();
-    let pos = { T: 0, C: 1, B: 2 }[id.substring(4, 5) as 'T' | 'C' | 'B'];
-    let side = { L: ["left", left], R: ["right", right] }[id.substring(5, 6) as 'L' | 'R'];
-    if (!side || (side[0] == "left" && !left) || (side[0] == "right" && !right)) {
-        return;
-    }
-    let mask = [false, false, false];
-    mask[pos] = true;
-    await drawSideKnobs(side[0] as "left" | "right", side[1] as KnobConfig[], mask);
-    if (!highlighted.has(id)) {
-        highlighted.add(id);
-        setTimeout(() => {
-            drawSideKnobs(side[0] as "left" | "right", side[1] as KnobConfig[], [false, false, false]);
-            highlighted.delete(id);
-        }, 200);
-    }
-    return (side[1] as KnobConfig[]) ? (side[1] as KnobConfig[])[pos] : undefined;
-};
-
-const takeAction = (labeled: KnobConfig | undefined, type: string, haptics: boolean): void => {
-    if (!isObject(labeled)) {
-        return;
-    }
-    let actionSpec = (labeled as any)[type];
-    if (actionSpec == null) {
-        return;
-    }
-    if (actionSpec.xplane_cmd != null) {
-        xplane.sendCommand(actionSpec.xplane_cmd);
-    }
-    if (haptics) {
-        device!.vibrate(HAPTIC.REV_FASTEST);
-    }
-};
-
-// React to button presses
-device!.on("down", async ({ id }) => {
-    if (isNumber(id)) {
-        if (id >= pages.length) {
-            return;
-        }
-        console.info(`switch to page: ${id}`);
-        currentPage = id;
-        await loadPage(getCurrentPage());
-    } else {
-        takeAction(await handleKnobEvent(id as string), "pressed", false);
-    }
-});
-
-// React to knob turns
-device!.on("rotate", async ({ id, delta }) => {
-    takeAction(await handleKnobEvent(id as string), (delta || 0) > 0 ? "inc" : "dec", false);
-});
-
-const clearStaleButton = async (touches: TouchEvent[]): Promise<void> => {
-    const s = new Set(
-        touches.map((o) => o.target.key).filter((k) => k !== undefined),
-    );
-    for (const id of pressed.keys()) {
-        if (!s.has(id)) {
-            const conf = getKeyConf(id);
-            if (conf != null) {
-                await drawKey(id, conf, false);
-            }
-            pressed.delete(id);
-        }
-    }
-};
-
-device!.on("touchstart", async ({ changedTouches }) => {
-    if (!changedTouches) return;
-    clearStaleButton(changedTouches);
-    const target = changedTouches[0].target;
-    if (target.key === undefined) {
-        return;
-    }
-    pressed.add(target.key);
-    const key = getKeyConf(target.key);
-    if (key) {
-        await drawKey(target.key, key, true);
-        takeAction(key as any, "pressed", true);
-    }
-});
-
-device!.on("touchmove", ({ changedTouches }) => {
-    if (!changedTouches) return;
-    clearStaleButton(changedTouches);
-});
-
-device!.on("touchend", async ({ changedTouches }) => {
-    if (!changedTouches) return;
-    clearStaleButton(changedTouches);
-    const target = changedTouches[0].target;
-    if (target.key === undefined) {
-        return;
-    }
-    pressed.delete(target.key);
-    const key = getKeyConf(target.key);
-    if (key) {
-        await drawKey(target.key, key, false);
-    }
-});
-
-process.on("SIGINT", async () => {
-    await resetRendering();
-    await device!.close();
-    await xplane.close();
-    process.exit();
-});

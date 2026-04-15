@@ -115,7 +115,7 @@ async function main() {
     socket.on('listening', () => {
         const address = socket.address();
         console.log(`Fake X-Plane server listening on ${address.address}:${address.port}`);
-        console.log("Run app.ts now. Waiting for it to connect...");
+        console.log("Run src/app.ts (or npm run start) now. Waiting for it to connect...");
     });
 
     socket.bind(listenPort, listenHost);

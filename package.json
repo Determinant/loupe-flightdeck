@@ -23,13 +23,13 @@
     "dist",
     "profile.yaml",
     "font.ttf",
-    "50-loupedeck.rules",
-    "patches"
+    "patches",
+    "scripts"
   ],
   "scripts": {
-    "build": "tsc && cp font.ttf profile.yaml 50-loupedeck.rules dist/",
-    "start": "node --import tsx/esm app.ts",
-    "dev": "node --import tsx/esm --watch app.ts",
+    "build": "tsc && cp font.ttf profile.yaml scripts/50-loupedeck.rules dist/",
+    "start": "node --import tsx/esm src/app.ts",
+    "dev": "node --import tsx/esm --watch src/app.ts",
     "postinstall": "patch-package"
   },
   "devDependencies": {

@@ -1,8 +1,8 @@
 diff --git a/node_modules/loupedeck/connections/serial.js b/node_modules/loupedeck/connections/serial.js
-index b7fa147..c7b2cb7 100644
+index b7fa147..6cf8d73 100644
 --- a/node_modules/loupedeck/connections/serial.js
 +++ b/node_modules/loupedeck/connections/serial.js
-@@ -46,9 +46,30 @@ export default class LoupedeckSerialConnection extends EventEmitter {
+@@ -46,9 +46,46 @@ export default class LoupedeckSerialConnection extends EventEmitter {
          return results
      }
      close() {
@@ -13,24 +13,40 @@ index b7fa147..c7b2cb7 100644
 +            return Promise.resolve()
 +        }
 +
++        const conn = this.connection
++        if (!conn.isOpen) {
++            return Promise.resolve()
++        }
++
 +        return new Promise((resolve, reject) => {
-+            this.connection.write(Buffer.from(WS_CLOSE_FRAME), writeErr => {
-+                if (writeErr) {
++            let closeStarted = false
++            let closeTimer
++
++            const finish = closeErr => {
++                clearTimeout(closeTimer)
++                if (!closeErr || closeErr.message === 'Port is not open') {
++                    return resolve()
++                }
++                reject(closeErr)
++            }
++
++            const closePort = () => {
++                if (closeStarted) return
++                closeStarted = true
++                conn.close(finish)
++            }
++
++            // Avoid hanging forever if write callback is never called.
++            closeTimer = setTimeout(closePort, 300)
++
++            conn.write(Buffer.from(WS_CLOSE_FRAME), writeErr => {
++                if (writeErr && writeErr.message !== 'Port is not open') {
 +                    console.error(
 +                        'Loupedeck: Failed to write close frame:',
 +                        writeErr.message
 +                    )
 +                }
-+
-+                this.connection.close(closeErr => {
-+                    if (closeErr) {
-+                        if (closeErr.message === 'Port is not open') {
-+                            return resolve()
-+                        }
-+                        return reject(closeErr)
-+                    }
-+                    resolve()
-+                })
++                closePort()
 +            })
 +        })
      }

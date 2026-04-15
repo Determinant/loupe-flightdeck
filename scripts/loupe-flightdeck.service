@@ -1,0 +1,17 @@
+[Unit]
+Description=Loupe Flightdeck
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# If loupe-flightdeck is not in the default PATH for user units, replace
+# ExecStart with the absolute path from: command -v loupe-flightdeck
+ExecStart=/usr/bin/env loupe-flightdeck
+# Example with explicit profile/host/port:
+# ExecStart=/usr/bin/env loupe-flightdeck %h/.config/loupe-flightdeck/profile.yaml --xplane-host 127.0.0.1 --xplane-port 49000
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
