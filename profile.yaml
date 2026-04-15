@@ -57,7 +57,7 @@
         # "type" indicates which template for the display to use (one of meter/text/bar/attitude/ias/alt/hsi)
         # here, "bar" is a bar chart that draws several (practically <= 4) bars from left to right showing some stats
         type: bar
-        # update frequency of the display
+        # polling rate for X-Plane UDP datarefs (render FPS is configured in app.ts)
         freq: 6
         source:
           - xplane_dataref: sim/cockpit2/engine/actuators/throttle_ratio[0]
@@ -138,7 +138,7 @@
           - xplane_dataref: sim/cockpit2/gauges/indicators/airspeed_kts_pilot
     - display:
         type: attitude
-        freq: 24
+        freq: 48
         source:
           - xplane_dataref: sim/cockpit/gyros/the_ind_ahars_pilot_deg # pitch
           - xplane_dataref: sim/cockpit/gyros/phi_ind_ahars_pilot_deg # roll
@@ -182,7 +182,7 @@
           - 16
     - display:
         type: hsi
-        freq: 12
+        freq: 48
         source:
           - xplane_dataref: sim/cockpit2/gauges/indicators/heading_AHARS_deg_mag_pilot # current heading
           - xplane_dataref: sim/cockpit2/autopilot/heading_dial_deg_mag_pilot # heading bug

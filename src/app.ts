@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
-import { registerFont, CanvasRenderingContext2D } from "canvas";
-import { queue, QueueObject } from "async";
+import { createCanvas, registerFont, CanvasRenderingContext2D } from "canvas";
 import { readFile } from "fs/promises";
 import { discover, HAPTIC, LoupedeckDevice } from "loupedeck";
 import { fileURLToPath } from "node:url";
@@ -15,7 +14,21 @@ import {
     renderKey,
     renderSideKnobs,
 } from "./graphics.js";
-import { XPlane } from "./xplane.js";
+import {
+    XPlane,
+    type SubscribeDataRefOptions,
+} from "./xplane.js";
+
+const KEY_COUNT = 12;
+const DISPLAY_REFRESH_HZ = 48;
+const DISPLAY_REFRESH_MS = Math.max(1, Math.floor(1000 / DISPLAY_REFRESH_HZ));
+const DEFAULT_XPLANE_DATAREF_HZ = 1;
+const RENDER_STATS_WINDOW_MS = 5000;
+const RENDER_WARN_MIN_MISSED = 3;
+const CENTER_IDLE_SLEEP_MS = 5000;
+const TOUCH_RECONCILE_INTERVAL_MS = 50;
+const TOUCH_MAX_PRESS_MS = 1000;
+const CONNECT_SETUP_RETRY_MS = 1000;
 
 // font.ttf uses the font from https://b612-font.com/
 const resourceDir = fileURLToPath(new URL("..", import.meta.url));
@@ -30,9 +43,25 @@ registerFont(fontPath, {
     family: defaultFont,
 });
 
-interface RenderTask {
-    key: number;
-    func: (c: CanvasRenderingContext2D) => void;
+interface KeySurface {
+    canvas: ReturnType<typeof createCanvas>;
+    ctx: CanvasRenderingContext2D;
+}
+
+interface CenterSurface {
+    canvas: ReturnType<typeof createCanvas>;
+    ctx: CanvasRenderingContext2D;
+}
+
+interface CenterRenderStats {
+    windowStart: number;
+    intervalTicks: number;
+    renderedFrames: number;
+    droppedRequests: number;
+    maxFrameMs: number;
+    maxRasterMs: number;
+    maxSendMs: number;
+    maxHeapMb: number;
 }
 
 interface TouchTarget {
@@ -44,8 +73,17 @@ interface TouchEvent {
     target: TouchTarget;
 }
 
+interface DataRefSubscription {
+    freq: number;
+    handlers: Array<(value: number) => void>;
+}
+
 const isNumber = (x: any): x is number => {
     return x != null && !isNaN(x);
+};
+
+const isSameNumber = (a: number | null, b: number): boolean => {
+    return a === b || (a != null && Number.isNaN(a) && Number.isNaN(b));
 };
 
 const isObject = (obj: any): obj is Record<string, any> => {
@@ -59,29 +97,30 @@ const getErrorMessage = (err: unknown): string => {
     return String(err);
 };
 
-const isDeviceNotDetectedError = (err: unknown): boolean => {
-    const msg = getErrorMessage(err).toLowerCase();
-    return (
-        msg.includes("no devices found")
-        || msg.includes("no device found")
-        || msg.includes("device not found")
-    );
+const getDisplayDataRefHz = (freq: number | undefined): number => {
+    if (!isNumber(freq) || !Number.isFinite(freq) || freq <= 0) {
+        return DEFAULT_XPLANE_DATAREF_HZ;
+    }
+    return Math.max(1, Math.floor(freq));
 };
 
 interface AppArgs {
     'xplane-port': number;
     'xplane-host': string;
+    verbose: boolean;
     _: string[];
 }
 
 const args = yargs(process.argv.slice(2))
-    .usage("./app.mjs [--xplane-host <host>] [--xplane-port <port>] [profile YAML file]")
+    .usage("loupe-flightdeck [--xplane-host <host>] [--xplane-port <port>] [--verbose] [profile YAML file]")
     .options({
         'xplane-port': { default: 49000, type: 'number' },
         'xplane-host': { default: "localhost", type: 'string' },
+        verbose: { default: false, type: "boolean" },
     }).parse() as Arguments<AppArgs>;
 const xplanePort = isNumber(args['xplane-port']) ? args['xplane-port'] : 49000;
 const xplaneHost = args['xplane-host'];
+const verbose = args.verbose === true;
 const profile_file = args._[0] ? args._[0] : fileURLToPath(new URL("../profile.yaml", import.meta.url));
 const pages: PageConfig[] = parse(await readFile(profile_file, "utf8"));
 
@@ -91,24 +130,48 @@ let currentPage =
 let highlighted = new Set<string>();
 let activeTouchId: number | null = null;
 let activeTouchKey: number | null = null;
+let activeTouchDeadlineMs: number | null = null;
+let pressedKey: number | null = null;
+let touchReconcileTimer: NodeJS.Timeout | null = null;
+let deviceOnline = false;
+let connectGeneration = 0;
+let connectSetupRetryTimer: NodeJS.Timeout | null = null;
 
 // detects and opens first connected device
 let device: LoupedeckDevice | undefined;
 
 // Render related variables
-let renderStop: (() => void)[] = [];
-let renderTasks: QueueObject<RenderTask>;
+let keySurfaces: KeySurface[] = [];
+let centerSurface: CenterSurface | null = null;
+let centerRenderInterval: NodeJS.Timeout | null = null;
+let centerRenderInFlight = false;
+let centerFrameRenderPending = false;
+let centerDirty = true;
+let centerSleeping = false;
+let centerLastActivityMs = Date.now();
+const displayValues = new WeakMap<KeyConfig, (number | null)[]>();
+let initialized = false;
+let centerRenderStats: CenterRenderStats = {
+    windowStart: Date.now(),
+    intervalTicks: 0,
+    renderedFrames: 0,
+    droppedRequests: 0,
+    maxFrameMs: 0,
+    maxRasterMs: 0,
+    maxSendMs: 0,
+    maxHeapMb: 0,
+};
 
 const xplane = new XPlane(xplaneHost, xplanePort);
 console.log(`Connecting to X-Plane at ${xplaneHost}:${xplanePort}`);
+if (verbose) {
+    console.log("x-plane verbose subscription stats enabled");
+}
 
 while (!device) {
     try {
         device = await discover();
     } catch (e) {
-        if (!isDeviceNotDetectedError(e)) {
-            console.error(`${getErrorMessage(e)}. retry in 5 secs`);
-        }
         await new Promise((res) => setTimeout(res, 5000));
     }
 }
@@ -128,14 +191,287 @@ const getKeyConf = (i: number): KeyConfig | null => {
     return null;
 };
 
-const drawKey = async (id: number, conf: KeyConfig | null, pressed: boolean): Promise<void> => {
-    if (conf && isObject(conf.display)) {
-        // not an input, but a display gauge
-        conf.display.pressed = pressed;
+const isCurrentPageIndex = (pageIndex: number): boolean => {
+    return pageIndex === currentPage;
+};
+
+const isStaleConnectGeneration = (generation: number): boolean => {
+    return generation !== connectGeneration || !deviceOnline;
+};
+
+const clearConnectSetupRetryTimer = (): void => {
+    if (!connectSetupRetryTimer) {
+        return;
+    }
+    clearTimeout(connectSetupRetryTimer);
+    connectSetupRetryTimer = null;
+};
+
+const scheduleConnectSetupRetry = (generation: number): void => {
+    clearConnectSetupRetryTimer();
+    connectSetupRetryTimer = setTimeout(() => {
+        if (isStaleConnectGeneration(generation)) {
+            return;
+        }
+        void runConnectSetup(generation);
+    }, CONNECT_SETUP_RETRY_MS);
+    connectSetupRetryTimer.unref?.();
+};
+
+const resetCenterRenderStats = (): void => {
+    centerRenderStats = {
+        windowStart: Date.now(),
+        intervalTicks: 0,
+        renderedFrames: 0,
+        droppedRequests: 0,
+        maxFrameMs: 0,
+        maxRasterMs: 0,
+        maxSendMs: 0,
+        maxHeapMb: 0,
+    };
+};
+
+const maybeWarnCenterRenderStats = (): void => {
+    const now = Date.now();
+    const elapsedMs = now - centerRenderStats.windowStart;
+    if (elapsedMs < RENDER_STATS_WINDOW_MS) {
         return;
     }
 
-    await device!.drawKey(id, (c: CanvasRenderingContext2D) => renderKey(c, conf, pressed));
+    const missedFrames = Math.max(
+        0,
+        centerRenderStats.intervalTicks - centerRenderStats.renderedFrames,
+    );
+    const elapsedSeconds = elapsedMs / 1000;
+    const actualHz = centerRenderStats.renderedFrames / elapsedSeconds;
+    const shouldWarn = (
+        missedFrames >= RENDER_WARN_MIN_MISSED
+        || centerRenderStats.droppedRequests >= RENDER_WARN_MIN_MISSED
+    );
+    if (shouldWarn) {
+        console.warn(
+            "center render lag:"
+            + ` rendered ${centerRenderStats.renderedFrames}/${centerRenderStats.intervalTicks}`
+            + ` interval ticks in ${elapsedSeconds.toFixed(1)}s`
+            + ` (${actualHz.toFixed(1)}Hz vs target ${DISPLAY_REFRESH_HZ}Hz),`
+            + ` missed=${missedFrames}, dropped=${centerRenderStats.droppedRequests},`
+            + ` slowest=${centerRenderStats.maxFrameMs}ms`
+            + ` (raster=${centerRenderStats.maxRasterMs}ms, send=${centerRenderStats.maxSendMs}ms),`
+            + ` heap=${centerRenderStats.maxHeapMb.toFixed(1)}MB`,
+        );
+    }
+
+    resetCenterRenderStats();
+};
+
+const scheduleCenterFrameRender = (): void => {
+    if (!centerRenderInterval) {
+        startCenterRendering();
+    }
+    if (centerRenderInFlight) {
+        centerFrameRenderPending = true;
+        return;
+    }
+    void runCenterFrameRender();
+};
+
+const markCenterActivity = (dirty = true): void => {
+    centerLastActivityMs = Date.now();
+    if (dirty) {
+        centerDirty = true;
+    }
+    if (!centerRenderInterval) {
+        startCenterRendering();
+    }
+};
+
+const maybeSleepCenterRendering = (): void => {
+    if (!centerRenderInterval) {
+        return;
+    }
+    if (centerRenderInFlight || centerFrameRenderPending || centerDirty) {
+        return;
+    }
+    if (Date.now() - centerLastActivityMs < CENTER_IDLE_SLEEP_MS) {
+        return;
+    }
+    centerSleeping = true;
+    console.info(`center rendering: sleep after ${CENTER_IDLE_SLEEP_MS}ms idle`);
+    stopCenterRendering();
+};
+
+const getKeyPosition = (index: number): { x: number; y: number } => {
+    const dev = device! as any;
+    const keySize = dev.keySize;
+    const x = dev.visibleX[0] + (index % dev.columns) * keySize;
+    const y = Math.floor(index / dev.columns) * keySize;
+    return { x, y };
+};
+
+const renderCenterDisplayFrame = async (): Promise<{ rasterMs: number; sendMs: number }> => {
+    const dev = device! as any;
+    if (!centerSurface) {
+        return { rasterMs: 0, sendMs: 0 };
+    }
+
+    const rasterStart = Date.now();
+    const { canvas: centerCanvas, ctx: c } = centerSurface;
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.fillStyle = "black";
+    c.fillRect(0, 0, centerCanvas.width, centerCanvas.height);
+    c.beginPath();
+
+    for (let i = 0; i < KEY_COUNT; i++) {
+        const conf = getKeyConf(i);
+        const surface = keySurfaces[i];
+        if (!surface) {
+            continue;
+        }
+
+        const { canvas, ctx } = surface;
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.fillStyle = "black";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.beginPath();
+        ctx.save();
+
+        if (conf && isObject(conf.display) && conf.display.type != null) {
+            const renderer = gaugeRenderers[conf.display.type];
+            if (renderer) {
+                renderer(ctx, conf.display, displayValues.get(conf) || []);
+            } else {
+                renderKey(ctx, conf, pressedKey === i);
+            }
+        } else {
+            renderKey(ctx, conf, pressedKey === i);
+        }
+        ctx.restore();
+        ctx.beginPath();
+
+        const { x, y } = getKeyPosition(i);
+        c.drawImage(canvas, x, y);
+    }
+
+    const buffer = centerCanvas.toBuffer("raw");
+    const rasterMs = Date.now() - rasterStart;
+
+    const sendStart = Date.now();
+    await dev.drawBuffer(
+        {
+            id: "center",
+            width: centerCanvas.width,
+            height: centerCanvas.height,
+        },
+        buffer,
+    );
+    const sendMs = Date.now() - sendStart;
+    return { rasterMs, sendMs };
+};
+
+const runCenterFrameRender = async (): Promise<void> => {
+    if (centerRenderInFlight) {
+        if (centerFrameRenderPending) {
+            centerRenderStats.droppedRequests++;
+        }
+        centerFrameRenderPending = true;
+        maybeWarnCenterRenderStats();
+        return;
+    }
+
+    centerRenderInFlight = true;
+    try {
+        const frameStart = Date.now();
+        const { rasterMs, sendMs } = await renderCenterDisplayFrame();
+        centerDirty = false;
+        centerRenderStats.renderedFrames++;
+        centerRenderStats.maxFrameMs = Math.max(
+            centerRenderStats.maxFrameMs,
+            Date.now() - frameStart,
+        );
+        centerRenderStats.maxRasterMs = Math.max(
+            centerRenderStats.maxRasterMs,
+            rasterMs,
+        );
+        centerRenderStats.maxSendMs = Math.max(
+            centerRenderStats.maxSendMs,
+            sendMs,
+        );
+        centerRenderStats.maxHeapMb = Math.max(
+            centerRenderStats.maxHeapMb,
+            process.memoryUsage().heapUsed / (1024 * 1024),
+        );
+    } catch (e) {
+        // Hot-plug disconnect/reconnect is expected; avoid noisy per-frame errors.
+    } finally {
+        centerRenderInFlight = false;
+        maybeWarnCenterRenderStats();
+        maybeSleepCenterRendering();
+        if (centerFrameRenderPending) {
+            centerFrameRenderPending = false;
+            void runCenterFrameRender();
+        }
+    }
+};
+
+const stopCenterRendering = (): void => {
+    if (centerRenderInterval) {
+        clearInterval(centerRenderInterval);
+    }
+    centerRenderInterval = null;
+    centerRenderInFlight = false;
+    centerFrameRenderPending = false;
+    centerDirty = true;
+    resetCenterRenderStats();
+};
+
+const startCenterRendering = (): void => {
+    if (centerSleeping) {
+        console.info("center rendering: wake");
+    }
+    centerSleeping = false;
+    stopCenterRendering();
+    centerRenderInFlight = false;
+    centerFrameRenderPending = false;
+    centerDirty = true;
+    centerLastActivityMs = Date.now();
+    resetCenterRenderStats();
+    centerRenderInterval = setInterval(() => {
+        centerRenderStats.intervalTicks++;
+        void runCenterFrameRender();
+    }, DISPLAY_REFRESH_MS);
+    void runCenterFrameRender();
+};
+
+const initKeySurfaces = (): void => {
+    const dev = device! as any;
+    const centerDisplay = dev.displays?.center;
+    const centerCanvas = createCanvas(
+        centerDisplay?.width || 480,
+        centerDisplay?.height || 270,
+    );
+    const centerCtx = centerCanvas.getContext("2d", { pixelFormat: "RGB16_565" } as any) as CanvasRenderingContext2D;
+    centerSurface = { canvas: centerCanvas, ctx: centerCtx };
+
+    keySurfaces = [];
+    for (let i = 0; i < KEY_COUNT; i++) {
+        const canvas = createCanvas(dev.keySize, dev.keySize);
+        const ctx = canvas.getContext("2d", { pixelFormat: "RGB16_565" } as any) as CanvasRenderingContext2D;
+        keySurfaces.push({ canvas, ctx });
+    }
+};
+
+const drawKey = async (id: number, conf: KeyConfig | null, pressed: boolean): Promise<void> => {
+    if (pressed) {
+        pressedKey = id;
+    } else if (pressedKey === id) {
+        pressedKey = null;
+    }
+
+    if (conf && isObject(conf.display)) {
+        // not an input, but a display gauge
+        conf.display.pressed = pressed;
+    }
+    markCenterActivity(true);
 };
 
 const drawSideKnobs = async (side: "left" | "right", confs: KnobConfig[] | undefined, highlight?: boolean[]): Promise<void> => {
@@ -152,70 +488,62 @@ const gaugeRenderers = getGaugeRenderers({
     },
 });
 
-const drawGauge = (key: number, label: KeyConfig, values: (number | null)[]): void => {
-    const display = label.display;
-    if (!display || display.type == null) {
-        return;
-    }
-    const renderer = gaugeRenderers[display.type];
-    if (renderer) {
-        renderTasks.push({
-            key,
-            func: (c) => renderer(c, display, values),
-        });
-    }
-};
-
-const resetRendering = async (): Promise<void> => {
-    for (let i = 0; i < renderStop.length; i++) {
-        renderStop[i]();
-    }
-    renderStop = [];
-    if (renderTasks) {
-        await renderTasks.pause();
-    }
-    renderTasks = queue(async (e: RenderTask) => {
-        const { key, func } = e;
-        await device!.drawKey(key, func);
-    });
-};
-
 const loadPage = async (page: PageConfig): Promise<void> => {
-    await resetRendering();
     // page is not null
     const { left, right, keys } = page;
-    let pms: Promise<void>[] = [];
+    pressedKey = null;
+    resetActiveTouchState();
+
+    const pms: Promise<void>[] = [];
     pms.push(drawSideKnobs("left", left as KnobConfig[]));
     pms.push(drawSideKnobs("right", right as KnobConfig[]));
-    for (let i = 0; i < 12; i++) {
+
+    for (let i = 0; i < KEY_COUNT; i++) {
         const conf = Array.isArray(keys) && keys.length > i ? keys[i] : null;
-        pms.push(drawKey(i, conf, false));
-        if (isObject(conf) && conf.display != null) {
-            (conf as any).renderStart();
+        if (isObject(conf) && isObject(conf.display)) {
+            conf.display.pressed = false;
         }
     }
+
     await Promise.all(pms);
+    markCenterActivity(true);
+    scheduleCenterFrameRender();
 };
 
-// Observe connect events
-device!.on("connect", async () => {
-    console.info("connected");
-    /*
-    for (let i = 3600; i > 1000; i -= 0.1) {
-        await device.drawKey(0, (c) => {
-            renderAltimeter(c, null, [i, 500]);
-        });
-        await new Promise((res) => setTimeout(res, 10));
+const applyPageButtonColors = async (): Promise<void> => {
+    for (let i = 0; i < pages.length; i++) {
+        const page = pages[i] || {};
+        const color = isObject(page) && page.color != null ? page.color : "white";
+        await device!.setButtonColor({ id: i, color });
     }
-    */
+};
+
+const initializePages = async (): Promise<void> => {
+    const subscriptions = new Map<string, DataRefSubscription>();
+    let sourceRefs = 0;
+    const registerDataRefHandler = (
+        dataRef: string,
+        freq: number,
+        handler: (value: number) => void,
+    ): void => {
+        const existing = subscriptions.get(dataRef);
+        if (existing) {
+            existing.freq = Math.max(existing.freq, freq);
+            existing.handlers.push(handler);
+            return;
+        }
+        const created: DataRefSubscription = {
+            freq,
+            handlers: [handler],
+        };
+        subscriptions.set(dataRef, created);
+    };
+
     for (let i = 0; i < pages.length; i++) {
         const page = pages[i] || {};
         const keys = page.keys;
-        const color =
-            isObject(page) && page.color != null ? page.color : "white";
-        await device!.setButtonColor({ id: i, color });
-        // subscribe the data feeds
-        for (let j = 0; j < 12; j++) {
+
+        for (let j = 0; j < KEY_COUNT; j++) {
             const conf =
                 Array.isArray(keys) && keys.length > j ? keys[j] : null;
             if (
@@ -223,76 +551,148 @@ device!.on("connect", async () => {
                 conf.display != null &&
                 Array.isArray(conf.display.source)
             ) {
-                let values: (number | null)[] = [];
-                //conf.fps = 0;
+                const freq = getDisplayDataRefHz(conf.display.freq);
+                const values: (number | null)[] = [];
                 for (let k = 0; k < conf.display.source.length; k++) {
                     values.push(null);
                 }
-                const freq = isNumber(conf.display.freq)
-                    ? conf.display.freq
-                    : 1;
-
-                const msPerFrame = 1000 / freq;
+                displayValues.set(conf, values);
                 conf.display.pressed = false;
-                (conf as any).renderStart = () => {
-                    let enabled = true;
-                    let startTime = new Date();
-                    let timeout: NodeJS.Timeout;
-                    function draw() {
-                        if (!enabled) {
-                            return;
-                        }
-                        drawGauge(j, conf!, values);
-                        //conf.fps++;
-                        let frameTime = msPerFrame;
-                        const elapsedTime = new Date().getTime() - startTime.getTime();
-                        if (elapsedTime > 1000) {
-                            startTime = new Date();
-                            (conf as any).fps = 0;
-                        } else if (elapsedTime + frameTime > 1000) {
-                            frameTime = 1000 - elapsedTime;
-                        }
-                        timeout = setTimeout(draw, frameTime);
-                    }
-                    draw();
-                    renderStop.push(() => {
-                        enabled = false;
-                        clearTimeout(timeout);
-                    });
-                };
 
                 for (let k = 0; k < conf.display.source.length; k++) {
                     const source = conf.display.source[k];
                     const xplane_dataref = source.xplane_dataref;
                     if (xplane_dataref != null) {
-                        await xplane.subscribeDataRef(
+                        sourceRefs++;
+                        registerDataRefHandler(
                             xplane_dataref,
                             freq,
-                            async (v: number) => (values[k] = v),
+                            (v: number) => {
+                                if (!isSameNumber(values[k], v)) {
+                                    values[k] = v;
+                                    if (isCurrentPageIndex(i)) {
+                                        markCenterActivity(true);
+                                    }
+                                }
+                            },
                         );
                     }
                 }
             }
         }
     }
-    await loadPage(getCurrentPage());
+
+    for (const [dataRef, subscription] of subscriptions.entries()) {
+        const statsOptions: SubscribeDataRefOptions | undefined = verbose
+            ? {
+                stats: {
+                    enabled: true,
+                    label: dataRef,
+                },
+            }
+            : undefined;
+        await xplane.subscribeDataRef(
+            dataRef,
+            subscription.freq,
+            (v: number) => {
+                for (let i = 0; i < subscription.handlers.length; i++) {
+                    subscription.handlers[i](v);
+                }
+            },
+            statsOptions,
+        );
+    }
+
+    console.info(
+        `x-plane unique datarefs: ${subscriptions.size}/${sourceRefs}`
+        + " (unique/total references)",
+    );
+};
+
+const runConnectSetup = async (generation: number): Promise<void> => {
+    try {
+        if (!initialized) {
+            await initializePages();
+            if (isStaleConnectGeneration(generation)) {
+                return;
+            }
+            initialized = true;
+        }
+
+        await applyPageButtonColors();
+        if (isStaleConnectGeneration(generation)) {
+            return;
+        }
+
+        initKeySurfaces();
+        startCenterRendering();
+        await loadPage(getCurrentPage());
+        if (isStaleConnectGeneration(generation)) {
+            return;
+        }
+        startTouchReconcileLoop();
+        clearConnectSetupRetryTimer();
+    } catch (e) {
+        if (isStaleConnectGeneration(generation)) {
+            return;
+        }
+        console.error(`connect setup failed: ${getErrorMessage(e)} (retrying)`);
+        stopTouchReconcileLoop();
+        stopCenterRendering();
+        pressedKey = null;
+        resetActiveTouchState();
+        scheduleConnectSetupRetry(generation);
+    }
+};
+
+// Observe connect events
+device!.on("connect", async () => {
+    if (deviceOnline) {
+        return;
+    }
+    deviceOnline = true;
+    const generation = ++connectGeneration;
+    console.info("connected");
+    clearConnectSetupRetryTimer();
+    await runConnectSetup(generation);
+});
+
+(device! as any).on("disconnect", () => {
+    if (!deviceOnline) {
+        return;
+    }
+    deviceOnline = false;
+    connectGeneration++;
+    clearConnectSetupRetryTimer();
+    console.info("disconnected");
+    stopTouchReconcileLoop();
+    stopCenterRendering();
+    pressedKey = null;
+    resetActiveTouchState();
 });
 
 const handleKnobEvent = async (id: string): Promise<KnobConfig | undefined> => {
     const { left, right } = getCurrentPage();
-    let pos = { T: 0, C: 1, B: 2 }[id.substring(4, 5) as 'T' | 'C' | 'B'];
-    let side = { L: ["left", left], R: ["right", right] }[id.substring(5, 6) as 'L' | 'R'];
+    const pos = { T: 0, C: 1, B: 2 }[id.substring(4, 5) as 'T' | 'C' | 'B'];
+    const side = { L: ["left", left], R: ["right", right] }[id.substring(5, 6) as 'L' | 'R'];
     if (!side || (side[0] == "left" && !left) || (side[0] == "right" && !right)) {
         return;
     }
-    let mask = [false, false, false];
+    const mask = [false, false, false];
     mask[pos] = true;
     await drawSideKnobs(side[0] as "left" | "right", side[1] as KnobConfig[], mask);
     if (!highlighted.has(id)) {
         highlighted.add(id);
         setTimeout(() => {
-            drawSideKnobs(side[0] as "left" | "right", side[1] as KnobConfig[], [false, false, false]);
-            highlighted.delete(id);
+            void drawSideKnobs(
+                side[0] as "left" | "right",
+                side[1] as KnobConfig[],
+                [false, false, false],
+            ).catch((e: unknown) => {
+                console.error(`failed to clear knob highlight: ${getErrorMessage(e)}`);
+            }).finally(() => {
+                highlighted.delete(id);
+            });
         }, 200);
     }
     return (side[1] as KnobConfig[]) ? (side[1] as KnobConfig[])[pos] : undefined;
@@ -340,22 +740,144 @@ const getTouchById = (touches: TouchEvent[] | undefined, id: number): TouchEvent
     return touches.find((touch) => touch.id === id);
 };
 
-const getFirstTouchWithKey = (touches: TouchEvent[] | undefined): TouchEvent | undefined => {
+const getPrimaryTouchWithKey = (touches: TouchEvent[] | undefined): TouchEvent | undefined => {
     if (!Array.isArray(touches)) {
         return;
     }
-    return touches.find((touch) => isNumber(touch.target.key));
+    let selected: TouchEvent | undefined;
+    let selectedId = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < touches.length; i++) {
+        const touch = touches[i];
+        if (!isNumber(touch.target.key) || !isNumber(touch.id)) {
+            continue;
+        }
+        if (touch.id < selectedId) {
+            selected = touch;
+            selectedId = touch.id;
+        }
+    }
+    return selected;
+};
+
+const getPrimaryTouchFromEvents = (
+    touches: TouchEvent[] | undefined,
+    changedTouches: TouchEvent[] | undefined,
+): TouchEvent | undefined => {
+    return getPrimaryTouchWithKey(changedTouches) || getPrimaryTouchWithKey(touches);
+};
+
+const clearPressedVisualState = (): void => {
+    if (!isNumber(pressedKey)) {
+        return;
+    }
+    pressedKey = null;
+    markCenterActivity(true);
 };
 
 const releaseActiveTouch = async (): Promise<void> => {
     if (!isNumber(activeTouchKey)) {
+        activeTouchDeadlineMs = null;
         return;
     }
-    const key = getKeyConf(activeTouchKey);
+    const keyId = activeTouchKey;
+    const key = getKeyConf(keyId);
     if (key) {
-        await drawKey(activeTouchKey, key, false);
+        await drawKey(keyId, key, false);
+    } else {
+        clearPressedVisualState();
     }
     activeTouchKey = null;
+    activeTouchDeadlineMs = null;
+};
+
+const resetActiveTouchState = (): void => {
+    activeTouchId = null;
+    activeTouchKey = null;
+    activeTouchDeadlineMs = null;
+};
+
+let touchEventQueue: Promise<void> = Promise.resolve();
+const queueTouchEvent = (eventName: string, task: () => Promise<void>): void => {
+    touchEventQueue = touchEventQueue.then(task).catch((e: unknown) => {
+        console.error(`touch ${eventName} failed: ${getErrorMessage(e)}`);
+    });
+};
+
+const getDeviceTouches = (): TouchEvent[] => {
+    if (!device) {
+        return [];
+    }
+    return Object.values(((device as any).touches || {})) as TouchEvent[];
+};
+
+const isActiveTouchExpired = (): boolean => {
+    return isNumber(activeTouchDeadlineMs) && Date.now() >= activeTouchDeadlineMs;
+};
+
+const reconcileActiveTouchFromDeviceState = async (): Promise<void> => {
+    if (!isNumber(activeTouchId)) {
+        return;
+    }
+    if (isActiveTouchExpired()) {
+        await clearActiveTouch();
+        return;
+    }
+    const trackedTouch = getTouchById(getDeviceTouches(), activeTouchId);
+    if (!trackedTouch) {
+        await clearActiveTouch();
+        return;
+    }
+    await updateActiveTouchKey(trackedTouch, false);
+};
+
+const stopTouchReconcileLoop = (): void => {
+    if (!touchReconcileTimer) {
+        return;
+    }
+    clearInterval(touchReconcileTimer);
+    touchReconcileTimer = null;
+};
+
+const startTouchReconcileLoop = (): void => {
+    stopTouchReconcileLoop();
+    touchReconcileTimer = setInterval(() => {
+        queueTouchEvent("reconcile", async () => {
+            await reconcileActiveTouchFromDeviceState();
+        });
+    }, TOUCH_RECONCILE_INTERVAL_MS);
+    touchReconcileTimer.unref?.();
+};
+
+const clearActiveTouch = async (): Promise<void> => {
+    await releaseActiveTouch();
+    clearPressedVisualState();
+    resetActiveTouchState();
+};
+
+const acquireActiveTouch = async (touch: TouchEvent, triggerAction: boolean): Promise<void> => {
+    if (!isNumber(touch.id)) {
+        return;
+    }
+    activeTouchId = touch.id;
+    activeTouchKey = null;
+    activeTouchDeadlineMs = null;
+    await updateActiveTouchKey(touch, triggerAction);
+};
+
+const isTouchTracked = (touches: TouchEvent[] | undefined, id: number | null): boolean => {
+    return isNumber(id) && !!getTouchById(touches, id);
+};
+
+const resyncActiveTouch = async (
+    touches: TouchEvent[] | undefined,
+    changedTouches: TouchEvent[] | undefined,
+): Promise<void> => {
+    if (!isNumber(activeTouchId)) {
+        return;
+    }
+    if (!isTouchTracked(changedTouches, activeTouchId) && !isTouchTracked(touches, activeTouchId)) {
+        await clearActiveTouch();
+    }
 };
 
 const updateActiveTouchKey = async (touch: TouchEvent, triggerAction: boolean): Promise<void> => {
@@ -371,6 +893,7 @@ const updateActiveTouchKey = async (touch: TouchEvent, triggerAction: boolean): 
     await releaseActiveTouch();
 
     activeTouchKey = nextKey;
+    activeTouchDeadlineMs = Date.now() + TOUCH_MAX_PRESS_MS;
     const key = getKeyConf(nextKey);
     if (key) {
         await drawKey(nextKey, key, true);
@@ -380,46 +903,72 @@ const updateActiveTouchKey = async (touch: TouchEvent, triggerAction: boolean): 
     }
 };
 
-device!.on("touchstart", async ({ touches, changedTouches }) => {
-    if (isNumber(activeTouchId)) {
-        return;
-    }
-
-    const selectedTouch = getFirstTouchWithKey(touches) || getFirstTouchWithKey(changedTouches);
-    if (!selectedTouch || !isNumber(selectedTouch.id)) {
-        return;
-    }
-
-    activeTouchId = selectedTouch.id;
-    await updateActiveTouchKey(selectedTouch, true);
+device!.on("touchstart", ({ touches, changedTouches }) => {
+    queueTouchEvent("start", async () => {
+        await resyncActiveTouch(touches, changedTouches);
+        const selectedTouch = getPrimaryTouchFromEvents(touches, changedTouches);
+        if (isNumber(activeTouchId)) {
+            if (!selectedTouch || !isNumber(selectedTouch.id) || selectedTouch.id === activeTouchId) {
+                return;
+            }
+            await clearActiveTouch();
+        }
+        if (!selectedTouch) {
+            return;
+        }
+        await acquireActiveTouch(selectedTouch, true);
+    });
 });
 
-device!.on("touchmove", async ({ touches, changedTouches }) => {
-    if (!isNumber(activeTouchId)) {
-        return;
-    }
-    const trackedTouch = getTouchById(touches, activeTouchId) || getTouchById(changedTouches, activeTouchId);
-    if (!trackedTouch) {
-        return;
-    }
-    await updateActiveTouchKey(trackedTouch, false);
+device!.on("touchmove", ({ touches, changedTouches }) => {
+    queueTouchEvent("move", async () => {
+        await resyncActiveTouch(touches, changedTouches);
+        if (!isNumber(activeTouchId)) {
+            const selectedTouch = getPrimaryTouchFromEvents(touches, changedTouches);
+            if (selectedTouch) {
+                await acquireActiveTouch(selectedTouch, true);
+            }
+            return;
+        }
+
+        const trackedTouch = getTouchById(touches, activeTouchId)
+            || getTouchById(changedTouches, activeTouchId);
+        if (trackedTouch) {
+            await updateActiveTouchKey(trackedTouch, false);
+            return;
+        }
+        await clearActiveTouch();
+    });
 });
 
-device!.on("touchend", async ({ changedTouches }) => {
-    if (!isNumber(activeTouchId)) {
-        return;
-    }
-    const endedTouch = getTouchById(changedTouches, activeTouchId);
-    if (!endedTouch) {
-        return;
-    }
+device!.on("touchend", ({ touches, changedTouches }) => {
+    queueTouchEvent("end", async () => {
+        if (!isNumber(activeTouchId)) {
+            return;
+        }
 
-    await releaseActiveTouch();
-    activeTouchId = null;
+        const trackedEndedTouch = getTouchById(changedTouches, activeTouchId);
+        const trackedStillActive = getTouchById(touches, activeTouchId);
+        if (!trackedEndedTouch && trackedStillActive) {
+            return;
+        }
+        await clearActiveTouch();
+    });
+});
+
+(device! as any).on("touchcancel", () => {
+    queueTouchEvent("cancel", async () => {
+        if (!isNumber(activeTouchId)) {
+            return;
+        }
+        await clearActiveTouch();
+    });
 });
 
 process.on("SIGINT", async () => {
-    await resetRendering();
+    clearConnectSetupRetryTimer();
+    stopTouchReconcileLoop();
+    stopCenterRendering();
     await device!.close();
     await xplane.close();
     process.exit();

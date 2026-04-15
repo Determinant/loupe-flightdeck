@@ -3,6 +3,8 @@ import { DisplayConfig, KeyConfig, KnobConfig, TextStyles } from "./config.js";
 
 export const defaultFont = "B612";
 const defaultTextSize = 18;
+const expressionEvaluatorCache = new Map<string, (value: number | null) => number | null>();
+const templateEvaluatorCache = new Map<string, (values: (number | null)[]) => string>();
 
 const isNumber = (x: any): x is number => {
     return x != null && !isNaN(x);
@@ -13,6 +15,24 @@ const isObject = (obj: any): obj is Record<string, any> => {
 };
 
 const deg2Rad = (x: number): number => (x / 180) * Math.PI;
+
+const getExpressionEvaluator = (exp: string): ((value: number | null) => number | null) => {
+    let fn = expressionEvaluatorCache.get(exp);
+    if (!fn) {
+        fn = Function("$d", `"use strict"; return(${exp});`) as (value: number | null) => number | null;
+        expressionEvaluatorCache.set(exp, fn);
+    }
+    return fn;
+};
+
+const getTemplateEvaluator = (fmt: string): ((values: (number | null)[]) => string) => {
+    let fn = templateEvaluatorCache.get(fmt);
+    if (!fn) {
+        fn = Function("$d", `"use strict"; return(\`${fmt}\`);`) as (values: (number | null)[]) => string;
+        templateEvaluatorCache.set(fmt, fn);
+    }
+    return fn;
+};
 
 const getTextStyles = (conf: KeyConfig | KnobConfig | DisplayConfig): TextStyles => {
     // conf must be non-null
@@ -54,14 +74,13 @@ const getLabels = (conf: KeyConfig | KnobConfig | DisplayConfig | string): strin
 };
 
 const transformValues = (conf: DisplayConfig, values: (number | null)[]): (number | null)[] => {
-    const f = (exp: string, v: number | null) => Function("$d", `"use strict"; return(${exp});`)(v);
     let last: string | undefined;
     const exps = Array.isArray(conf.exp) ? conf.exp : [conf.exp];
     let res: (number | null)[] = [];
     for (let i = 0; i < values.length; i++) {
         let exp = exps[i] || last;
         if (exp) {
-            res[i] = f(exp, values[i]);
+            res[i] = getExpressionEvaluator(exp)(values[i]);
         } else {
             res[i] = values[i];
         }
@@ -74,7 +93,7 @@ const formatValues = (conf: DisplayConfig, values_: (number | null)[], n = 1): {
     const values = transformValues(conf, values_);
     const f = (fmt?: string) => {
         if (fmt) {
-            return Function("$d", `"use strict"; return(\`${fmt}\`);`)(values);
+            return getTemplateEvaluator(fmt)(values);
         }
         if (!isNumber(values[0])) {
             return "X";
@@ -96,7 +115,7 @@ const formatValues = (conf: DisplayConfig, values_: (number | null)[], n = 1): {
 const formatColors = (colorName: string, conf: DisplayConfig, values: (number | null)[], n = 1): string[] => {
     const f = (fmt?: string) => {
         if (fmt) {
-            return Function("$d", `"use strict"; return(\`${fmt}\`);`)(values);
+            return getTemplateEvaluator(fmt)(values);
         }
         return "#fff";
     };
@@ -266,14 +285,14 @@ const renderMeterGauge = (c: CanvasRenderingContext2D, display: DisplayConfig, v
     const h = c.canvas.height;
 
     const { min, max, stops } = display || {};
-
-    if (min == null) {
+    if (min == null || max == null || max <= min) {
         return;
     }
-
-    let reading = (Math.max(values[0] || 0, min) - min) / (max || 0 - min);
-    if (!isNumber(reading)) {
-        reading = min;
+    const span = max - min;
+    const rawValue = isNumber(values[0]) ? values[0] : min;
+    let reading = (Math.min(Math.max(rawValue, min), max) - min) / span;
+    if (!Number.isFinite(reading)) {
+        reading = 0;
     }
 
     // draw background
@@ -292,8 +311,8 @@ const renderMeterGauge = (c: CanvasRenderingContext2D, display: DisplayConfig, v
     if (stops) {
         for (let i = 0; i < stops.length; i++) {
             const theta0 =
-                Math.PI * (1 + (stops[i].value_begin - min) / ((max || 0) - min)) + 0.05;
-            const theta1 = Math.PI * (1 + (stops[i].value_end - min) / ((max || 0) - min));
+                Math.PI * (1 + (stops[i].value_begin - min) / span) + 0.05;
+            const theta1 = Math.PI * (1 + (stops[i].value_end - min) / span);
 
             c.beginPath();
             c.lineWidth = width;

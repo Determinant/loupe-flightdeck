@@ -1,8 +1,8 @@
 diff --git a/node_modules/loupedeck/connections/serial.js b/node_modules/loupedeck/connections/serial.js
-index b7fa147..6cf8d73 100644
+index b7fa147..7d8f642 100644
 --- a/node_modules/loupedeck/connections/serial.js
 +++ b/node_modules/loupedeck/connections/serial.js
-@@ -46,9 +46,46 @@ export default class LoupedeckSerialConnection extends EventEmitter {
+@@ -46,9 +46,41 @@ export default class LoupedeckSerialConnection extends EventEmitter {
          return results
      }
      close() {
@@ -40,15 +40,19 @@ index b7fa147..6cf8d73 100644
 +            closeTimer = setTimeout(closePort, 300)
 +
 +            conn.write(Buffer.from(WS_CLOSE_FRAME), writeErr => {
-+                if (writeErr && writeErr.message !== 'Port is not open') {
-+                    console.error(
-+                        'Loupedeck: Failed to write close frame:',
-+                        writeErr.message
-+                    )
-+                }
++                // Ignore close write errors during hot-plug; we still close the port.
 +                closePort()
 +            })
 +        })
      }
      async connect() {
          this.connection = new SerialPort({ path: this.path, baudRate: 256000 })
+@@ -78,7 +110,7 @@ export default class LoupedeckSerialConnection extends EventEmitter {
+         this.emit('disconnect', err)
+     }
+     onError(err) {
+-        console.error(`Loupedeck Serial Error: ${err.message}`)
++        // Hot-plug can trigger transient serial errors; surface as disconnect only.
+         this.onDisconnect(err)
+     }
+     send(buff, raw = false) {
