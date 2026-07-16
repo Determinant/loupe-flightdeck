@@ -1,6 +1,6 @@
 {
   "name": "loupe-flightdeck",
-  "version": "0.0.21",
+  "version": "0.0.22",
   "type": "module",
   "description": "Turn your stream deck into a flight deck!",
   "repository": {
@@ -26,9 +26,10 @@
     "scripts"
   ],
   "scripts": {
-    "build": "tsc && cp font.ttf profile.yaml scripts/50-loupedeck.rules dist/",
+    "build": "tsc && cp font.ttf profile.yaml scripts/50-loupedeck.rules dist/ && chmod +x dist/app.js",
     "start": "node --import tsx/esm src/app.ts",
     "dev": "node --import tsx/esm --watch src/app.ts",
+    "prepack": "npm run build",
     "postinstall": "patch-package"
   },
   "devDependencies": {
