@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
 import yargs from "yargs/yargs";
 import { Arguments } from "yargs";
-import { KeyConfig, KnobConfig, PageConfig } from "./config.js";
+import type { ActionSpec, DisplayConfig, KeyConfig, KnobConfig, PageConfig } from "./config.js";
 import {
     defaultFont,
     getGaugeRenderers,
@@ -78,16 +78,23 @@ interface DataRefSubscription {
     handlers: Array<(value: number) => void>;
 }
 
-const isNumber = (x: any): x is number => {
-    return x != null && !isNaN(x);
+type ActionType = "pressed" | "inc" | "dec";
+type ActionOwner = Partial<Record<ActionType, ActionSpec>>;
+
+const isNumber = (x: unknown): x is number => {
+    return typeof x === "number" && Number.isFinite(x);
 };
 
 const isSameNumber = (a: number | null, b: number): boolean => {
     return a === b || (a != null && Number.isNaN(a) && Number.isNaN(b));
 };
 
-const isObject = (obj: any): obj is Record<string, any> => {
-    return obj != null && obj.constructor.name === "Object";
+const isObject = (obj: unknown): obj is Record<string, unknown> => {
+    return typeof obj === "object" && obj != null && !Array.isArray(obj);
+};
+
+const getDisplayConfig = (conf: KeyConfig | null | undefined): DisplayConfig | null => {
+    return isObject(conf?.display) ? conf.display : null;
 };
 
 const getErrorMessage = (err: unknown): string => {
@@ -98,7 +105,7 @@ const getErrorMessage = (err: unknown): string => {
 };
 
 const getDisplayDataRefHz = (freq: number | undefined): number => {
-    if (!isNumber(freq) || !Number.isFinite(freq) || freq <= 0) {
+    if (!isNumber(freq) || freq <= 0) {
         return DEFAULT_XPLANE_DATAREF_HZ;
     }
     return Math.max(1, Math.floor(freq));
@@ -126,7 +133,7 @@ const pages: PageConfig[] = parse(await readFile(profile_file, "utf8"));
 
 // state of the controller
 let currentPage =
-    isObject(pages[0]) && pages[0].default != null ? pages[0].default : 0;
+    isNumber(pages[0]?.default) ? pages[0].default : 0;
 let highlighted = new Set<string>();
 let activeTouchId: number | null = null;
 let activeTouchKey: number | null = null;
@@ -301,7 +308,7 @@ const maybeSleepCenterRendering = (): void => {
 };
 
 const getKeyPosition = (index: number): { x: number; y: number } => {
-    const dev = device! as any;
+    const dev = device!;
     const keySize = dev.keySize;
     const x = dev.visibleX[0] + (index % dev.columns) * keySize;
     const y = Math.floor(index / dev.columns) * keySize;
@@ -309,7 +316,7 @@ const getKeyPosition = (index: number): { x: number; y: number } => {
 };
 
 const renderCenterDisplayFrame = async (): Promise<{ rasterMs: number; sendMs: number }> => {
-    const dev = device! as any;
+    const dev = device!;
     if (!centerSurface) {
         return { rasterMs: 0, sendMs: 0 };
     }
@@ -335,10 +342,11 @@ const renderCenterDisplayFrame = async (): Promise<{ rasterMs: number; sendMs: n
         ctx.beginPath();
         ctx.save();
 
-        if (conf && isObject(conf.display) && conf.display.type != null) {
-            const renderer = gaugeRenderers[conf.display.type];
+        const display = getDisplayConfig(conf);
+        if (conf && display?.type != null) {
+            const renderer = gaugeRenderers[display.type];
             if (renderer) {
-                renderer(ctx, conf.display, displayValues.get(conf) || []);
+                renderer(ctx, display, displayValues.get(conf) || []);
             } else {
                 renderKey(ctx, conf, pressedKey === i);
             }
@@ -443,19 +451,19 @@ const startCenterRendering = (): void => {
 };
 
 const initKeySurfaces = (): void => {
-    const dev = device! as any;
+    const dev = device!;
     const centerDisplay = dev.displays?.center;
     const centerCanvas = createCanvas(
         centerDisplay?.width || 480,
         centerDisplay?.height || 270,
     );
-    const centerCtx = centerCanvas.getContext("2d", { pixelFormat: "RGB16_565" } as any) as CanvasRenderingContext2D;
+    const centerCtx = centerCanvas.getContext("2d", { pixelFormat: "RGB16_565" });
     centerSurface = { canvas: centerCanvas, ctx: centerCtx };
 
     keySurfaces = [];
     for (let i = 0; i < KEY_COUNT; i++) {
         const canvas = createCanvas(dev.keySize, dev.keySize);
-        const ctx = canvas.getContext("2d", { pixelFormat: "RGB16_565" } as any) as CanvasRenderingContext2D;
+        const ctx = canvas.getContext("2d", { pixelFormat: "RGB16_565" });
         keySurfaces.push({ canvas, ctx });
     }
 };
@@ -467,15 +475,16 @@ const drawKey = async (id: number, conf: KeyConfig | null, pressed: boolean): Pr
         pressedKey = null;
     }
 
-    if (conf && isObject(conf.display)) {
+    const display = getDisplayConfig(conf);
+    if (display) {
         // not an input, but a display gauge
-        conf.display.pressed = pressed;
+        display.pressed = pressed;
     }
     markCenterActivity(true);
 };
 
 const drawSideKnobs = async (side: "left" | "right", confs: KnobConfig[] | undefined, highlight?: boolean[]): Promise<void> => {
-    await device!.drawScreen(side, (c: any) => {
+    await device!.drawScreen(side, (c: CanvasRenderingContext2D) => {
         const page = getCurrentPage();
         const light = page.color != null ? page.color : "white";
         renderSideKnobs(c, confs, light, highlight);
@@ -495,13 +504,14 @@ const loadPage = async (page: PageConfig): Promise<void> => {
     resetActiveTouchState();
 
     const pms: Promise<void>[] = [];
-    pms.push(drawSideKnobs("left", left as KnobConfig[]));
-    pms.push(drawSideKnobs("right", right as KnobConfig[]));
+    pms.push(drawSideKnobs("left", left));
+    pms.push(drawSideKnobs("right", right));
 
     for (let i = 0; i < KEY_COUNT; i++) {
         const conf = Array.isArray(keys) && keys.length > i ? keys[i] : null;
-        if (isObject(conf) && isObject(conf.display)) {
-            conf.display.pressed = false;
+        const display = getDisplayConfig(conf);
+        if (display) {
+            display.pressed = false;
         }
     }
 
@@ -513,7 +523,7 @@ const loadPage = async (page: PageConfig): Promise<void> => {
 const applyPageButtonColors = async (): Promise<void> => {
     for (let i = 0; i < pages.length; i++) {
         const page = pages[i] || {};
-        const color = isObject(page) && page.color != null ? page.color : "white";
+        const color = typeof page.color === "string" ? page.color : "white";
         await device!.setButtonColor({ id: i, color });
     }
 };
@@ -546,21 +556,18 @@ const initializePages = async (): Promise<void> => {
         for (let j = 0; j < KEY_COUNT; j++) {
             const conf =
                 Array.isArray(keys) && keys.length > j ? keys[j] : null;
-            if (
-                isObject(conf) &&
-                conf.display != null &&
-                Array.isArray(conf.display.source)
-            ) {
-                const freq = getDisplayDataRefHz(conf.display.freq);
+            const display = getDisplayConfig(conf);
+            if (conf && display && Array.isArray(display.source)) {
+                const freq = getDisplayDataRefHz(display.freq);
                 const values: (number | null)[] = [];
-                for (let k = 0; k < conf.display.source.length; k++) {
+                for (let k = 0; k < display.source.length; k++) {
                     values.push(null);
                 }
                 displayValues.set(conf, values);
-                conf.display.pressed = false;
+                display.pressed = false;
 
-                for (let k = 0; k < conf.display.source.length; k++) {
-                    const source = conf.display.source[k];
+                for (let k = 0; k < display.source.length; k++) {
+                    const source = display.source[k];
                     const xplane_dataref = source.xplane_dataref;
                     if (xplane_dataref != null) {
                         sourceRefs++;
@@ -657,7 +664,7 @@ device!.on("connect", async () => {
     await runConnectSetup(generation);
 });
 
-(device! as any).on("disconnect", () => {
+device!.on("disconnect", () => {
     if (!deviceOnline) {
         return;
     }
@@ -672,21 +679,27 @@ device!.on("connect", async () => {
 });
 
 const handleKnobEvent = async (id: string): Promise<KnobConfig | undefined> => {
-    const { left, right } = getCurrentPage();
-    const pos = { T: 0, C: 1, B: 2 }[id.substring(4, 5) as 'T' | 'C' | 'B'];
-    const side = { L: ["left", left], R: ["right", right] }[id.substring(5, 6) as 'L' | 'R'];
-    if (!side || (side[0] == "left" && !left) || (side[0] == "right" && !right)) {
+    const page = getCurrentPage();
+    const knobPosition = id.substring(4, 5);
+    const sideCode = id.substring(5, 6);
+    const pos = knobPosition === "T" ? 0 : knobPosition === "C" ? 1 : knobPosition === "B" ? 2 : null;
+    const side = sideCode === "L" ? "left" : sideCode === "R" ? "right" : null;
+    if (pos == null || side == null) {
+        return;
+    }
+    const confs = side === "left" ? page.left : page.right;
+    if (!confs) {
         return;
     }
     const mask = [false, false, false];
     mask[pos] = true;
-    await drawSideKnobs(side[0] as "left" | "right", side[1] as KnobConfig[], mask);
+    await drawSideKnobs(side, confs, mask);
     if (!highlighted.has(id)) {
         highlighted.add(id);
         setTimeout(() => {
             void drawSideKnobs(
-                side[0] as "left" | "right",
-                side[1] as KnobConfig[],
+                side,
+                confs,
                 [false, false, false],
             ).catch((e: unknown) => {
                 console.error(`failed to clear knob highlight: ${getErrorMessage(e)}`);
@@ -695,19 +708,16 @@ const handleKnobEvent = async (id: string): Promise<KnobConfig | undefined> => {
             });
         }, 200);
     }
-    return (side[1] as KnobConfig[]) ? (side[1] as KnobConfig[])[pos] : undefined;
+    return confs[pos];
 };
 
-const takeAction = (labeled: KnobConfig | undefined, type: string, haptics: boolean): void => {
-    if (!isObject(labeled)) {
-        return;
-    }
-    let actionSpec = (labeled as any)[type];
+const takeAction = (labeled: ActionOwner | undefined, type: ActionType, haptics: boolean): void => {
+    const actionSpec = labeled?.[type];
     if (actionSpec == null) {
         return;
     }
     if (actionSpec.xplane_cmd != null) {
-        xplane.sendCommand(actionSpec.xplane_cmd);
+        void xplane.sendCommand(actionSpec.xplane_cmd);
     }
     if (haptics) {
         device!.vibrate(HAPTIC.REV_FASTEST);
@@ -724,13 +734,13 @@ device!.on("down", async ({ id }) => {
         currentPage = id;
         await loadPage(getCurrentPage());
     } else {
-        takeAction(await handleKnobEvent(id as string), "pressed", false);
+        takeAction(await handleKnobEvent(id), "pressed", false);
     }
 });
 
 // React to knob turns
 device!.on("rotate", async ({ id, delta }) => {
-    takeAction(await handleKnobEvent(id as string), (delta || 0) > 0 ? "inc" : "dec", false);
+    takeAction(await handleKnobEvent(id), delta > 0 ? "inc" : "dec", false);
 });
 
 const getTouchById = (touches: TouchEvent[] | undefined, id: number): TouchEvent | undefined => {
@@ -807,7 +817,7 @@ const getDeviceTouches = (): TouchEvent[] => {
     if (!device) {
         return [];
     }
-    return Object.values(((device as any).touches || {})) as TouchEvent[];
+    return Object.values(device.touches || {}) as TouchEvent[];
 };
 
 const isActiveTouchExpired = (): boolean => {
@@ -898,7 +908,7 @@ const updateActiveTouchKey = async (touch: TouchEvent, triggerAction: boolean): 
     if (key) {
         await drawKey(nextKey, key, true);
         if (triggerAction) {
-            takeAction(key as any, "pressed", true);
+            takeAction(key, "pressed", true);
         }
     }
 };
@@ -956,7 +966,7 @@ device!.on("touchend", ({ touches, changedTouches }) => {
     });
 });
 
-(device! as any).on("touchcancel", () => {
+device!.on("touchcancel", () => {
     queueTouchEvent("cancel", async () => {
         if (!isNumber(activeTouchId)) {
             return;

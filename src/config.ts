@@ -58,14 +58,21 @@ export interface StopConfig {
     color: string;
 }
 
-export interface NavConfig {
+export interface DeflectionNavConfig {
     def: number;
-    received: number;
+    display?: number;
+    received?: number;
+    flag?: number;
+}
+
+export interface HsiNavConfig extends DeflectionNavConfig {
     crs: number;
     fromto: number;
     next: string;
     color?: string;
 }
+
+export type NavConfig = DeflectionNavConfig | HsiNavConfig;
 
 export interface TextStyles {
     font: string[];

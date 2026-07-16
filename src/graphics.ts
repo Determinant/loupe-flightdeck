@@ -1,20 +1,91 @@
 import { CanvasRenderingContext2D } from "canvas";
-import { DisplayConfig, KeyConfig, KnobConfig, TextStyles } from "./config.js";
+import type { DeflectionNavConfig, DisplayConfig, HsiNavConfig, KeyConfig, KnobConfig, TextStyles } from "./config.js";
 
 export const defaultFont = "B612";
 const defaultTextSize = 18;
+const invalidDataColor = "red";
 const expressionEvaluatorCache = new Map<string, (value: number | null) => number | null>();
 const templateEvaluatorCache = new Map<string, (values: (number | null)[]) => string>();
 
-const isNumber = (x: any): x is number => {
-    return x != null && !isNaN(x);
+interface DeflectionState {
+    def: number | null;
+    displayActive: number | null;
+    flag: number | null;
+}
+
+const isNumber = (x: unknown): x is number => {
+    return typeof x === "number" && Number.isFinite(x);
 };
 
-const isObject = (obj: any): obj is Record<string, any> => {
-    return obj != null && obj.constructor.name === "Object";
+const isSourceIndex = (x: unknown): x is number => {
+    return isNumber(x) && Number.isInteger(x) && x >= 0;
+};
+
+const isObject = (obj: unknown): obj is Record<string, unknown> => {
+    return typeof obj === "object" && obj != null && !Array.isArray(obj);
+};
+
+const numberOr = (value: number | null | undefined, fallback: number): number => {
+    return isNumber(value) ? value : fallback;
+};
+
+const isDeflectionNavConfig = (obj: unknown): obj is DeflectionNavConfig => {
+    return isObject(obj)
+        && isSourceIndex(obj.def)
+        && (isSourceIndex(obj.display) || isSourceIndex(obj.received) || isSourceIndex(obj.flag));
+};
+
+const isHsiNavConfig = (obj: unknown): obj is HsiNavConfig => {
+    return isObject(obj)
+        && isSourceIndex(obj.def)
+        && (isSourceIndex(obj.display) || isSourceIndex(obj.received))
+        && isSourceIndex(obj.crs)
+        && isSourceIndex(obj.fromto)
+        && typeof obj.next === "string";
+};
+
+const sourceValue = (values: (number | null)[], index: number | undefined): number | null => {
+    return isSourceIndex(index) ? values[index] ?? null : null;
+};
+
+const readDeflectionState = (
+    src: DeflectionNavConfig,
+    values: (number | null)[],
+    legacyReceivedIsFlag = false,
+): DeflectionState => {
+    const displayIndex = src.display
+        ?? (legacyReceivedIsFlag && src.flag == null ? undefined : src.received);
+    const flagIndex = src.flag
+        ?? (legacyReceivedIsFlag && src.display == null ? src.received : undefined);
+    return {
+        def: sourceValue(values, src.def),
+        displayActive: sourceValue(values, displayIndex),
+        flag: sourceValue(values, flagIndex),
+    };
 };
 
 const deg2Rad = (x: number): number => (x / 180) * Math.PI;
+
+const renderInvalidDataCross = (
+    c: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    padding = 0,
+    lineWidth = 2,
+): void => {
+    c.save();
+    c.beginPath();
+    c.strokeStyle = invalidDataColor;
+    c.lineWidth = lineWidth;
+    c.moveTo(x + padding, y + padding);
+    c.lineTo(x + w - padding, y + h - padding);
+    c.moveTo(x + padding, y + h - padding);
+    c.lineTo(x + w - padding, y + padding);
+    c.stroke();
+    c.restore();
+};
 
 const getExpressionEvaluator = (exp: string): ((value: number | null) => number | null) => {
     let fn = expressionEvaluatorCache.get(exp);
@@ -34,39 +105,26 @@ const getTemplateEvaluator = (fmt: string): ((values: (number | null)[]) => stri
     return fn;
 };
 
-const getTextStyles = (conf: KeyConfig | KnobConfig | DisplayConfig): TextStyles => {
-    // conf must be non-null
-    let font: string[] = [];
-    let color_bg: (string | undefined)[] = [];
-    let color_fg: (string | undefined)[] = [];
+const getTextStyles = (
+    conf: KeyConfig | KnobConfig | DisplayConfig,
+    lines = 1,
+    defaultFg = "#fff",
+): TextStyles => {
+    const size = Array.isArray(conf.size) ? conf.size : [conf.size];
+    const color_bg = Array.isArray(conf.color_bg) ? conf.color_bg : [conf.color_bg];
+    const color_fg = Array.isArray(conf.color_fg) ? conf.color_fg : [conf.color_fg];
 
-    if (isObject(conf)) {
-        const size = Array.isArray(conf.size) ? conf.size : [conf.size];
-        color_bg = Array.isArray(conf.color_bg)
-            ? conf.color_bg
-            : [conf.color_bg];
-        color_fg = Array.isArray(conf.color_fg)
-            ? conf.color_fg
-            : [conf.color_fg];
-        for (let i = 0; i < size.length; i++) {
-            font.push(
-                `${size[i] ? size[i] : defaultTextSize}px '${defaultFont}'`,
-            );
-        }
-    } else {
-        font.push(`${defaultTextSize}px '${defaultFont}'`);
-    }
     return {
-        font,
-        color_bg,
-        color_fg,
+        font: Array.from({ length: lines }, (_, i) => `${size[i] ?? size[0] ?? defaultTextSize}px '${defaultFont}'`),
+        color_bg: Array.from({ length: lines }, (_, i) => color_bg[i] ?? color_bg[0]),
+        color_fg: Array.from({ length: lines }, (_, i) => color_fg[i] ?? color_fg[0] ?? defaultFg),
     };
 };
 
 const getLabels = (conf: KeyConfig | KnobConfig | DisplayConfig | string): string[] => {
     let text: string[];
     if (isObject(conf)) {
-        text = Array.isArray(conf.label) ? conf.label : [conf.label || ""];
+        text = Array.isArray(conf.label) ? conf.label : [conf.label ?? ""];
     } else {
         text = [conf.toString()];
     }
@@ -78,8 +136,8 @@ const transformValues = (conf: DisplayConfig, values: (number | null)[]): (numbe
     const exps = Array.isArray(conf.exp) ? conf.exp : [conf.exp];
     let res: (number | null)[] = [];
     for (let i = 0; i < values.length; i++) {
-        let exp = exps[i] || last;
-        if (exp) {
+        let exp = exps[i] ?? last;
+        if (exp != null) {
             res[i] = getExpressionEvaluator(exp)(values[i]);
         } else {
             res[i] = values[i];
@@ -92,7 +150,7 @@ const transformValues = (conf: DisplayConfig, values: (number | null)[]): (numbe
 const formatValues = (conf: DisplayConfig, values_: (number | null)[], n = 1): { text: string[], values: (number | null)[] } => {
     const values = transformValues(conf, values_);
     const f = (fmt?: string) => {
-        if (fmt) {
+        if (fmt != null) {
             return getTemplateEvaluator(fmt)(values);
         }
         if (!isNumber(values[0])) {
@@ -105,16 +163,16 @@ const formatValues = (conf: DisplayConfig, values_: (number | null)[], n = 1): {
     let text: string[] = [];
     const formatter = Array.isArray(conf.fmt) ? conf.fmt : [conf.fmt];
     for (let i = 0; i < n; i++) {
-        let fmt = formatter[i] || last;
+        let fmt = formatter[i] ?? last;
         text.push(f(fmt));
         last = fmt;
     }
     return { text, values };
 };
 
-const formatColors = (colorName: string, conf: DisplayConfig, values: (number | null)[], n = 1): string[] => {
+const formatTextColors = (conf: DisplayConfig, values: (number | null)[], n = 1): string[] => {
     const f = (fmt?: string) => {
-        if (fmt) {
+        if (fmt != null) {
             return getTemplateEvaluator(fmt)(values);
         }
         return "#fff";
@@ -122,18 +180,20 @@ const formatColors = (colorName: string, conf: DisplayConfig, values: (number | 
 
     let last: string | undefined;
     let color: string[] = [];
-    const formatter = Array.isArray((conf as any)[colorName])
-        ? (conf as any)[colorName]
-        : [(conf as any)[colorName]];
+    const formatter = Array.isArray(conf.color_fg) ? conf.color_fg : [conf.color_fg];
     for (let i = 0; i < n; i++) {
-        let fmt = formatter[i] || last;
+        let fmt = formatter[i] ?? last;
         color.push(f(fmt));
         last = fmt;
     }
     return color;
 };
 
-const renderMultiLineText = (c: CanvasRenderingContext2D, x0: number, y0: number, w: number, h: number, text: string[], styles: TextStyles, conf: KeyConfig | KnobConfig | Record<string, any>) => {
+const renderMultiLineText = (c: CanvasRenderingContext2D, x0: number, y0: number, w: number, h: number, text: string[], styles: TextStyles, conf: { sep?: number }) => {
+    if (text.length === 0) {
+        return;
+    }
+
     const { font, color_fg } = styles;
     c.save();
     let sep = conf.sep;
@@ -142,11 +202,11 @@ const renderMultiLineText = (c: CanvasRenderingContext2D, x0: number, y0: number
         const mx = c.measureText("x");
         sep = mx.actualBoundingBoxAscent - mx.actualBoundingBoxDescent;
     }
-    let ms: TextMetrics[] = [];
+    let ms: ReturnType<CanvasRenderingContext2D["measureText"]>[] = [];
     let totalHeight = 0;
     for (let i = 0; i < text.length; i++) {
         c.font = font[i];
-        const m = c.measureText(text[i]) as any;
+        const m = c.measureText(text[i]);
         ms.push(m);
         totalHeight += m.actualBoundingBoxAscent - m.actualBoundingBoxDescent;
     }
@@ -193,10 +253,7 @@ export const renderKey = (
     c.strokeRect(padding, padding, w - padding * 2, h - padding * 2);
     if (conf != null) {
         const labels = getLabels(conf);
-        const styles = getTextStyles(conf);
-        for (let i = 0; i < labels.length; i++) {
-            styles.color_fg[i] = fg;
-        }
+        const styles = getTextStyles(conf, labels.length, fg);
         renderMultiLineText(c, 0, 0, w, h, labels, styles, conf);
     }
     // otherwise the empty key style is still drawn
@@ -231,10 +288,11 @@ export const renderSideKnobs = (
             h - y_padding * 2,
         );
         if (Array.isArray(confs) && confs.length > i && confs[i] != null) {
-            const { font, color_bg } = getTextStyles(confs[i]);
+            c.save();
             const text = getLabels(confs[i]);
-            if (color_bg[0]) {
-                c.fillStyle = color_bg[0];
+            const styles = getTextStyles(confs[i], text.length, fg);
+            if (styles.color_bg[0]) {
+                c.fillStyle = styles.color_bg[0];
                 c.fillRect(
                     x_padding + 2,
                     y_padding + y_offset + 2,
@@ -244,6 +302,11 @@ export const renderSideKnobs = (
             }
             c.translate(w, y_offset);
             c.rotate(Math.PI / 2);
+            const textStyles = {
+                ...styles,
+                color_bg: [],
+                color_fg: hl ? styles.color_fg.map(() => fg) : styles.color_fg,
+            };
             renderMultiLineText(
                 c,
                 0,
@@ -251,10 +314,10 @@ export const renderSideKnobs = (
                 h,
                 w,
                 text,
-                { font, color_fg: [fg], color_bg: [] },
+                textStyles,
                 confs[i],
             );
-            c.resetTransform();
+            c.restore();
         }
     }
 };
@@ -273,12 +336,12 @@ const renderTextGauge = (c: CanvasRenderingContext2D, display: DisplayConfig, va
     // TODO: cache this
     const styles = getTextStyles({
         size: display.size,
-        color_fg: formatColors("color_fg", display, values, values.length),
-    });
+        color_fg: formatTextColors(display, values, text.length),
+    }, text.length);
     renderMultiLineText(c, 0, 0, w, h, text, { ...styles, color_bg: [] }, {});
 };
 
-const renderMeterGauge = (c: CanvasRenderingContext2D, display: DisplayConfig, values: (number | null)[]): void => {
+const renderMeterGauge = (c: CanvasRenderingContext2D, display: DisplayConfig, values_: (number | null)[]): void => {
     const bg = "black";
     const fg = "white";
     const w = c.canvas.width;
@@ -288,6 +351,9 @@ const renderMeterGauge = (c: CanvasRenderingContext2D, display: DisplayConfig, v
     if (min == null || max == null || max <= min) {
         return;
     }
+
+    // Apply display expressions before using the numeric value, so needle and text stay in sync.
+    const { text, values } = formatValues(display, values_);
     const span = max - min;
     const rawValue = isNumber(values[0]) ? values[0] : min;
     let reading = (Math.min(Math.max(rawValue, min), max) - min) / span;
@@ -340,7 +406,6 @@ const renderMeterGauge = (c: CanvasRenderingContext2D, display: DisplayConfig, v
     c.stroke();
 
     // show the value text
-    const { text } = formatValues(display, values);
     const { font } = getTextStyles(display);
     c.font = font[0];
     c.fillStyle = fg;
@@ -354,19 +419,27 @@ const renderAttitudeIndicator = (c: CanvasRenderingContext2D, display: DisplayCo
     const w = c.canvas.width;
     const h = c.canvas.height;
 
+    c.save();
+
     // draw background
     c.fillStyle = bg;
     c.fillRect(0, 0, w, h);
 
-    const pitch = values[0] || 0;
-    const roll = values[1] || 0;
-    const slip = values[2] || 0;
-    let src = isObject(display.navs) ? display.navs[values[3] || 0] : null;
-    if (!isObject(src)) {
+    const pitch = values[0];
+    const roll = values[1];
+    if (!isNumber(pitch) || !isNumber(roll)) {
+        renderInvalidDataCross(c, 0, 0, w, h, 10, Math.max(2, Math.min(w, h) * 0.035));
+        c.restore();
+        return;
+    }
+
+    const slip = numberOr(values[2], 0);
+    const navSource = isSourceIndex(values[3]) ? values[3] : 0;
+    let src = isObject(display.navs) ? display.navs[navSource] : null;
+    if (!isDeflectionNavConfig(src)) {
         src = null;
     }
-    const cdi = src ? values[src.def] : null;
-    const received = src ? values[src.received] : null;
+    const vdef = src ? readDeflectionState(src, values, true) : null;
 
     const x0 = w / 2;
     const y0 = h / 2;
@@ -483,9 +556,12 @@ const renderAttitudeIndicator = (c: CanvasRenderingContext2D, display: DisplayCo
     }
     c.stroke();
 
-    if (isNumber(received) && received == 0) {
+    const showVDef = vdef != null
+        && (!isNumber(vdef.displayActive) || vdef.displayActive != 0)
+        && (!isNumber(vdef.flag) || vdef.flag == 0);
+    if (showVDef) {
         // draw CDI diamond
-        const cdiY = 13 * (cdi || 0);
+        const cdiY = 13 * numberOr(vdef.def, 0);
         const cdiH = 7;
         const cdiW = 4;
         c.fillStyle = "#2dfe54";
@@ -498,6 +574,7 @@ const renderAttitudeIndicator = (c: CanvasRenderingContext2D, display: DisplayCo
         c.stroke();
         c.fill();
     }
+    c.restore();
 };
 
 interface MechanicalNumber {
@@ -583,6 +660,7 @@ const renderMechanicalDisplay = (
     c.fillRect(0, narrowWinY, w, narrowWinH);
     c.fillRect(wideWinX, wideWinY, wideWinW, wideWinH);
 
+    c.beginPath();
     c.rect(0, narrowWinY, w, narrowWinH);
     c.rect(wideWinX, wideWinY, wideWinW, wideWinH);
     c.stroke();
@@ -591,14 +669,7 @@ const renderMechanicalDisplay = (
     c.fillStyle = fg;
 
     if (!isNumber(value)) {
-        c.beginPath();
-        const y0 = narrowWinY;
-        const y1 = narrowWinY + narrowWinH;
-        c.moveTo(0, y0);
-        c.lineTo(w, y1);
-        c.moveTo(0, y1);
-        c.lineTo(w, y0);
-        c.stroke();
+        renderInvalidDataCross(c, 0, narrowWinY, w, narrowWinH, 0, 3);
         c.restore();
         return;
     }
@@ -655,7 +726,7 @@ const renderIAS = (c: CanvasRenderingContext2D, display: DisplayConfig, values: 
     c.fillStyle = bg;
     c.fillRect(0, 0, w, h);
 
-    const ias = Math.max(values[0] || 0, 0);
+    const ias = isNumber(values[0]) ? Math.max(values[0], 0) : null;
     renderMechanicalDisplay(c, w, h, ias, 20, true, 1);
 };
 
@@ -720,23 +791,31 @@ const renderHSI = (
     const cdiR = 0.4 * r;
     const vdefR = 3;
 
-    const hdg = deg2Rad(values[0] || 0);
-    const hdgB = values[1] ? deg2Rad(values[1]) : null;
-    let src = isObject(display.navs) && values[2] != null ? display.navs[values[2]] : null;
-    if (!isObject(src)) {
+    if (!isNumber(values[0])) {
+        display.pressed = false;
+        renderInvalidDataCross(c, 0, 0, w, h, 10, Math.max(2, Math.min(w, h) * 0.035));
+        return;
+    }
+
+    c.save();
+
+    const hdg = deg2Rad(values[0]);
+    const hdgB = isNumber(values[1]) ? deg2Rad(values[1]) : null;
+    const navSource = isSourceIndex(values[2]) ? values[2] : null;
+    let src = isObject(display.navs) && navSource != null ? display.navs[navSource] : null;
+    if (!isHsiNavConfig(src)) {
         src = null;
     }
-    if (display.pressed && src) {
+    if (display.pressed) {
         display.pressed = false;
-        onHsiSourceChange?.(src.next.toString());
+        if (src) {
+            onHsiSourceChange?.(src.next.toString());
+        }
     }
-    const crs = src ? deg2Rad(values[src.crs] || 0) : null;
+    const crs = src ? deg2Rad(numberOr(values[src.crs], 0)) : null;
     const fromto = src ? values[src.fromto] : null;
-    let def = src ? Math.min(Math.max(values[src.def] || 0, -3), 3) : null;
-    if (!isNumber(def)) {
-        def = 0;
-    }
-    const received = src ? values[src.received] : null;
+    const hdef = src ? readDeflectionState(src, values) : null;
+    const def = Math.min(Math.max(isNumber(hdef?.def) ? hdef.def : 0, -3), 3);
     const polarXY = (theta: number, r: number) => {
         const t = -theta - Math.PI / 2;
         const dx = r * Math.cos(t);
@@ -765,6 +844,7 @@ const renderHSI = (
     if (crs != null) {
         c.rotate(crs);
 
+        c.beginPath();
         for (let i = -2; i <= 2; i++) {
             const r = i == 0 ? 1 : vdefR;
             const x = 13 * i;
@@ -777,7 +857,7 @@ const renderHSI = (
         c.lineWidth = 3;
         c.strokeStyle = src?.color ? src.color : "magenta";
 
-        if (isNumber(received) && received != 0) {
+        if (isNumber(hdef?.displayActive) && hdef.displayActive != 0) {
             // draw CDI needle
             const cdiX = 13 * def;
             c.moveTo(cdiX, -(cdiR - 1));
@@ -815,7 +895,7 @@ const renderHSI = (
         c.rotate(-crs);
     }
 
-    if (hdgB !== null && isNumber(hdgB)) {
+    if (hdgB != null) {
         const bugW = 4;
         const bugY1 = -(r - 5);
         const bugY0 = -(r - 8);
@@ -835,6 +915,7 @@ const renderHSI = (
     }
 
     c.stroke();
+    c.restore();
 };
 
 const renderBarGauge = (c: CanvasRenderingContext2D, display: DisplayConfig, values_: (number | null)[]): void => {
@@ -856,9 +937,10 @@ const renderBarGauge = (c: CanvasRenderingContext2D, display: DisplayConfig, val
     // TODO: cache this
     const { font, color_fg } = getTextStyles({
         size: display.size,
-        color_fg: formatColors("color_fg", display, values, values.length),
-    });
+        color_fg: formatTextColors(display, values, text.length),
+    }, text.length);
 
+    c.save();
     c.rotate(Math.PI / 2);
 
     let y = -(w - (slotWidth + 10) * text.length) / 2;
@@ -867,11 +949,12 @@ const renderBarGauge = (c: CanvasRenderingContext2D, display: DisplayConfig, val
     for (let i = 0; i < text.length; i++) {
         c.lineWidth = 1;
         c.strokeRect(x, y - barWidth, slotHeight, barWidth);
-        const r = Math.max(Math.min(values[i] || 0, 1), 0);
+        const r = Math.max(Math.min(numberOr(values[i], 0), 1), 0);
         c.fillStyle = color_fg[i] || fg;
         const xx = x + slotHeight * (1 - r);
         c.fillRect(xx + 1, y - barWidth + 1, slotHeight * r - 1, barWidth - 1);
         c.lineWidth = 2;
+        c.beginPath();
         c.moveTo(xx + 1, y + 2);
         c.lineTo(xx + 1, y - barWidth - 2);
         c.stroke();
@@ -881,6 +964,7 @@ const renderBarGauge = (c: CanvasRenderingContext2D, display: DisplayConfig, val
         c.fillText(t, x, y - slotWidth + 2);
         y -= slotWidth + 10;
     }
+    c.restore();
 };
 
 export type GaugeRenderer = (

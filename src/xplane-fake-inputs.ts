@@ -84,6 +84,7 @@ function getValueForDataRef(dataRef: string): number {
         case "sim/cockpit2/radios/indicators/hsi_hdef_dots_pilot": return Math.sin(simState.time * 0.7) * 2;
         case "sim/cockpit2/radios/indicators/hsi_display_horizontal_pilot": return 1;
         case "sim/cockpit2/radios/indicators/hsi_vdef_dots_pilot": return Math.sin(simState.time * 0.5) * 1.5;
+        case "sim/cockpit2/radios/indicators/hsi_display_vertical_pilot": return 1;
         case "sim/cockpit2/radios/indicators/hsi_flag_glideslope_pilot": return 0;
         case "sim/cockpit2/gauges/indicators/slip_deg": return -simState.bank_angle / 10;
         case "sim/cockpit2/gauges/indicators/vvi_fpm_pilot": return simState.vertical_speed;

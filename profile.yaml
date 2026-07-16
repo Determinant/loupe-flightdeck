@@ -98,9 +98,12 @@
     - display:
         # meter is a arc-style display that could be used to show RPM/power/speed, etc.
         type: meter
-        freq: 6
+        freq: 24
         source:
           - xplane_dataref: sim/cockpit2/engine/indicators/MPR_in_hg[0]
+        # tame tiny float jitter from the raw dataref
+        exp:
+          - '$d != null ? Math.round($d * 5) / 5 : null'
         min: 10
         max: 30
         fmt: '${$d[0] != null ? $d[0].toFixed(1) : "X"}'
@@ -111,9 +114,12 @@
             value_end: 30
     - display:
         type: meter
-        freq: 6
+        freq: 24
         source:
           - xplane_dataref: sim/cockpit2/engine/indicators/engine_speed_rpm[0]
+        # keep the needle from dancing on very small RPM changes at high polling rates
+        exp:
+          - '$d != null ? Math.round($d / 10) * 10 : null'
         min: 0
         max: 3000
         stops:
@@ -145,18 +151,24 @@
           - xplane_dataref: sim/cockpit2/gauges/indicators/slip_deg
           - xplane_dataref: sim/cockpit2/radios/actuators/HSI_source_select_pilot # navigation source for HSI
           - xplane_dataref: sim/cockpit2/radios/indicators/hsi_vdef_dots_pilot
+          # vertical guidance mode/display state
+          - xplane_dataref: sim/cockpit2/radios/indicators/hsi_display_vertical_pilot
+          # 0 means valid GS/GP signal, non-zero means flag/no valid signal
           - xplane_dataref: sim/cockpit2/radios/indicators/hsi_flag_glideslope_pilot
-        # navs contains the mapping from the HSI source value (source[2]) to the index in source[] array
+        # navs contains the mapping from the HSI source value (source[3]) to the index in source[] array
         navs:
           2:
             def: 4
-            received: 5
+            display: 5
+            flag: 6
           0:
             def: 4
-            received: 5
+            display: 5
+            flag: 6
           1:
             def: 4
-            received: 5
+            display: 5
+            flag: 6
     - display:
         type: alt
         freq: 24
@@ -200,21 +212,21 @@
             crs: 5
             fromto: 6
             def: 3
-            received: 4
+            display: 4
             color: magenta
             next: sim/autopilot/hsi_select_nav_1
           0:
             crs: 7
             fromto: 8
             def: 3
-            received: 4
+            display: 4
             color: '#2dfe54'
             next: sim/autopilot/hsi_select_nav_2
           1:
             crs: 9
             fromto: 10
             def: 3
-            received: 4
+            display: 4
             color: '#2dfe54'
             next: sim/autopilot/hsi_select_gps
       pressed: {}
@@ -245,7 +257,35 @@
         xplane_cmd: sim/flight_controls/brakes_toggle_regular
 
 # Page 1
-- right:
+- left:
+    # left knob labels from top to bottom
+    - label: Thr.
+      color_fg: white
+      inc:
+        xplane_cmd: sim/engines/throttle_up
+      dec:
+        xplane_cmd: sim/engines/throttle_down
+      pressed:
+        xplane_cmd: lfd/throttle_full
+    - label: Prop
+      color_fg: white
+      color_bg: '#0000ff'
+      inc:
+        xplane_cmd: sim/engines/prop_up
+      dec:
+        xplane_cmd: sim/engines/prop_down
+      pressed:
+        xplane_cmd: lfd/prop_full
+    - label: Mix.
+      color_fg: white
+      inc:
+        xplane_cmd: sim/engines/mixture_up
+      dec:
+        xplane_cmd: sim/engines/mixture_down
+      pressed:
+        xplane_cmd: sim/engines/mixture_max
+      color_bg: '#ff0000'
+  right:
     - label: HDG
       inc:
         xplane_cmd: sim/GPS/g1000n1_hdg_up
