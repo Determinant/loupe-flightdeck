@@ -66,23 +66,21 @@ const readDeflectionState = (
 
 const deg2Rad = (x: number): number => (x / 180) * Math.PI;
 
-const renderInvalidDataCross = (
+export const renderAeroCross = (
     c: CanvasRenderingContext2D,
-    x: number,
-    y: number,
     w: number,
     h: number,
-    padding = 0,
-    lineWidth = 2,
 ): void => {
+    const padding = 10;
+
     c.save();
     c.beginPath();
     c.strokeStyle = invalidDataColor;
-    c.lineWidth = lineWidth;
-    c.moveTo(x + padding, y + padding);
-    c.lineTo(x + w - padding, y + h - padding);
-    c.moveTo(x + padding, y + h - padding);
-    c.lineTo(x + w - padding, y + padding);
+    c.lineWidth = Math.max(2, Math.min(w, h) * 0.035);
+    c.moveTo(padding, padding);
+    c.lineTo(w - padding, h - padding);
+    c.moveTo(padding, h - padding);
+    c.lineTo(w - padding, padding);
     c.stroke();
     c.restore();
 };
@@ -425,13 +423,8 @@ const renderAttitudeIndicator = (c: CanvasRenderingContext2D, display: DisplayCo
     c.fillStyle = bg;
     c.fillRect(0, 0, w, h);
 
-    const pitch = values[0];
-    const roll = values[1];
-    if (!isNumber(pitch) || !isNumber(roll)) {
-        renderInvalidDataCross(c, 0, 0, w, h, 10, Math.max(2, Math.min(w, h) * 0.035));
-        c.restore();
-        return;
-    }
+    const pitch = isNumber(values[0]) ? values[0] : 0;
+    const roll = isNumber(values[1]) ? values[1] : 0;
 
     const slip = numberOr(values[2], 0);
     const navSource = isSourceIndex(values[3]) ? values[3] : 0;
@@ -629,7 +622,7 @@ const renderMechanicalDisplay = (
     c: CanvasRenderingContext2D,
     w: number,
     h: number,
-    value: number | null,
+    value: number,
     padding = 20,
     right = true,
     wideWinWidth = 2,
@@ -667,12 +660,6 @@ const renderMechanicalDisplay = (
     c.clip();
     c.strokeStyle = fg;
     c.fillStyle = fg;
-
-    if (!isNumber(value)) {
-        renderInvalidDataCross(c, 0, narrowWinY, w, narrowWinH, 0, 3);
-        c.restore();
-        return;
-    }
 
     let { digits, scroll, low10, lowDigits } = mechanicalStyleNumber(
         value,
@@ -726,7 +713,7 @@ const renderIAS = (c: CanvasRenderingContext2D, display: DisplayConfig, values: 
     c.fillStyle = bg;
     c.fillRect(0, 0, w, h);
 
-    const ias = isNumber(values[0]) ? Math.max(values[0], 0) : null;
+    const ias = isNumber(values[0]) ? Math.max(values[0], 0) : 0;
     renderMechanicalDisplay(c, w, h, ias, 20, true, 1);
 };
 
@@ -740,7 +727,8 @@ const renderAltimeter = (c: CanvasRenderingContext2D, display: DisplayConfig, va
     c.fillStyle = bg;
     c.fillRect(0, 0, w, h);
 
-    renderMechanicalDisplay(c, w * 0.6, h, values[0], 5, true, 2, 20, defaultTextSize * 0.8);
+    const alt = isNumber(values[0]) ? values[0] : 0;
+    renderMechanicalDisplay(c, w * 0.6, h, alt, 5, true, 2, 20, defaultTextSize * 0.8);
 
     // draw floating vsi window
     const vs = values[1];
@@ -791,15 +779,15 @@ const renderHSI = (
     const cdiR = 0.4 * r;
     const vdefR = 3;
 
-    if (!isNumber(values[0])) {
+    const hdgRaw = values[0];
+    const hdgFailed = !isNumber(hdgRaw);
+    if (hdgFailed) {
         display.pressed = false;
-        renderInvalidDataCross(c, 0, 0, w, h, 10, Math.max(2, Math.min(w, h) * 0.035));
-        return;
     }
 
     c.save();
 
-    const hdg = deg2Rad(values[0]);
+    const hdg = deg2Rad(isNumber(hdgRaw) ? hdgRaw : 0);
     const hdgB = isNumber(values[1]) ? deg2Rad(values[1]) : null;
     const navSource = isSourceIndex(values[2]) ? values[2] : null;
     let src = isObject(display.navs) && navSource != null ? display.navs[navSource] : null;
@@ -914,6 +902,16 @@ const renderHSI = (
         c.fill();
     }
 
+    c.stroke();
+    c.restore();
+
+    c.save();
+    c.strokeStyle = "yellow";
+    c.lineWidth = 2;
+    c.beginPath();
+    c.moveTo(x0 - 4, 4);
+    c.lineTo(x0, 10);
+    c.lineTo(x0 + 4, 4);
     c.stroke();
     c.restore();
 };

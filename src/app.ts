@@ -11,6 +11,7 @@ import type { ActionSpec, DisplayConfig, KeyConfig, KnobConfig, PageConfig } fro
 import {
     defaultFont,
     getGaugeRenderers,
+    renderAeroCross,
     renderKey,
     renderSideKnobs,
 } from "./graphics.js";
@@ -78,6 +79,11 @@ interface DataRefSubscription {
     handlers: Array<(value: number) => void>;
 }
 
+interface DisplayState {
+    values: (number | null)[];
+    aeroCrossed: boolean;
+}
+
 type ActionType = "pressed" | "inc" | "dec";
 type ActionOwner = Partial<Record<ActionType, ActionSpec>>;
 
@@ -109,6 +115,20 @@ const getDisplayDataRefHz = (freq: number | undefined): number => {
         return DEFAULT_XPLANE_DATAREF_HZ;
     }
     return Math.max(1, Math.floor(freq));
+};
+
+const isDisplayAeroCrossed = (display: DisplayConfig, values: (number | null)[]): boolean => {
+    switch (display.type) {
+        case "attitude":
+            return !isNumber(values[0]) || !isNumber(values[1]);
+        case "ias":
+        case "alt":
+        case "hsi":
+        case "text":
+            return !isNumber(values[0]);
+        default:
+            return false;
+    }
 };
 
 interface AppArgs {
@@ -156,7 +176,7 @@ let centerFrameRenderPending = false;
 let centerDirty = true;
 let centerSleeping = false;
 let centerLastActivityMs = Date.now();
-const displayValues = new WeakMap<KeyConfig, (number | null)[]>();
+const displayStates = new WeakMap<KeyConfig, DisplayState>();
 let initialized = false;
 let centerRenderStats: CenterRenderStats = {
     windowStart: Date.now(),
@@ -346,7 +366,11 @@ const renderCenterDisplayFrame = async (): Promise<{ rasterMs: number; sendMs: n
         if (conf && display?.type != null) {
             const renderer = gaugeRenderers[display.type];
             if (renderer) {
-                renderer(ctx, display, displayValues.get(conf) || []);
+                const state = displayStates.get(conf);
+                renderer(ctx, display, state?.values || []);
+                if (state?.aeroCrossed) {
+                    renderAeroCross(ctx, canvas.width, canvas.height);
+                }
             } else {
                 renderKey(ctx, conf, pressedKey === i);
             }
@@ -563,7 +587,11 @@ const initializePages = async (): Promise<void> => {
                 for (let k = 0; k < display.source.length; k++) {
                     values.push(null);
                 }
-                displayValues.set(conf, values);
+                const state: DisplayState = {
+                    values,
+                    aeroCrossed: isDisplayAeroCrossed(display, values),
+                };
+                displayStates.set(conf, state);
                 display.pressed = false;
 
                 for (let k = 0; k < display.source.length; k++) {
@@ -575,8 +603,9 @@ const initializePages = async (): Promise<void> => {
                             xplane_dataref,
                             freq,
                             (v: number) => {
-                                if (!isSameNumber(values[k], v)) {
-                                    values[k] = v;
+                                if (!isSameNumber(state.values[k], v)) {
+                                    state.values[k] = v;
+                                    state.aeroCrossed = isDisplayAeroCrossed(display, state.values);
                                     if (isCurrentPageIndex(i)) {
                                         markCenterActivity(true);
                                     }
