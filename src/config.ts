@@ -45,7 +45,6 @@ export interface DisplayConfig {
     color_bg?: string | string[];
     label?: string | string[];
     navs?: Record<string, NavConfig>;
-    pressed?: boolean;
 }
 
 export interface SourceConfig {
@@ -73,6 +72,29 @@ export interface HsiNavConfig extends DeflectionNavConfig {
 }
 
 export type NavConfig = DeflectionNavConfig | HsiNavConfig;
+
+const isObject = (obj: unknown): obj is Record<string, unknown> => {
+    return typeof obj === "object" && obj != null && !Array.isArray(obj);
+};
+
+export const isSourceIndex = (x: unknown): x is number => {
+    return typeof x === "number" && Number.isFinite(x) && Number.isInteger(x) && x >= 0;
+};
+
+export const isDeflectionNavConfig = (obj: unknown): obj is DeflectionNavConfig => {
+    return isObject(obj)
+        && isSourceIndex(obj.def)
+        && (isSourceIndex(obj.display) || isSourceIndex(obj.received) || isSourceIndex(obj.flag));
+};
+
+export const isHsiNavConfig = (obj: unknown): obj is HsiNavConfig => {
+    return isObject(obj)
+        && isSourceIndex(obj.def)
+        && (isSourceIndex(obj.display) || isSourceIndex(obj.received))
+        && isSourceIndex(obj.crs)
+        && isSourceIndex(obj.fromto)
+        && typeof obj.next === "string";
+};
 
 export interface TextStyles {
     font: string[];

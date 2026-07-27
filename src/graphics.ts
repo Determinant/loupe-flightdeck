@@ -1,5 +1,14 @@
 import { CanvasRenderingContext2D } from "canvas";
-import type { DeflectionNavConfig, DisplayConfig, HsiNavConfig, KeyConfig, KnobConfig, TextStyles } from "./config.js";
+import {
+    isDeflectionNavConfig,
+    isHsiNavConfig,
+    isSourceIndex,
+    type DeflectionNavConfig,
+    type DisplayConfig,
+    type KeyConfig,
+    type KnobConfig,
+    type TextStyles,
+} from "./config.js";
 
 export const defaultFont = "B612";
 const defaultTextSize = 18;
@@ -17,31 +26,12 @@ const isNumber = (x: unknown): x is number => {
     return typeof x === "number" && Number.isFinite(x);
 };
 
-const isSourceIndex = (x: unknown): x is number => {
-    return isNumber(x) && Number.isInteger(x) && x >= 0;
-};
-
 const isObject = (obj: unknown): obj is Record<string, unknown> => {
     return typeof obj === "object" && obj != null && !Array.isArray(obj);
 };
 
 const numberOr = (value: number | null | undefined, fallback: number): number => {
     return isNumber(value) ? value : fallback;
-};
-
-const isDeflectionNavConfig = (obj: unknown): obj is DeflectionNavConfig => {
-    return isObject(obj)
-        && isSourceIndex(obj.def)
-        && (isSourceIndex(obj.display) || isSourceIndex(obj.received) || isSourceIndex(obj.flag));
-};
-
-const isHsiNavConfig = (obj: unknown): obj is HsiNavConfig => {
-    return isObject(obj)
-        && isSourceIndex(obj.def)
-        && (isSourceIndex(obj.display) || isSourceIndex(obj.received))
-        && isSourceIndex(obj.crs)
-        && isSourceIndex(obj.fromto)
-        && typeof obj.next === "string";
 };
 
 const sourceValue = (values: (number | null)[], index: number | undefined): number | null => {
@@ -65,6 +55,14 @@ const readDeflectionState = (
 };
 
 const deg2Rad = (x: number): number => (x / 180) * Math.PI;
+
+const textMetricHeight = (m: ReturnType<CanvasRenderingContext2D["measureText"]>): number => {
+    return m.actualBoundingBoxAscent + m.actualBoundingBoxDescent;
+};
+
+const textMetricCenterOffset = (m: ReturnType<CanvasRenderingContext2D["measureText"]>): number => {
+    return (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2;
+};
 
 export const renderAeroCross = (
     c: CanvasRenderingContext2D,
@@ -187,6 +185,10 @@ const formatTextColors = (conf: DisplayConfig, values: (number | null)[], n = 1)
     return color;
 };
 
+const formatLineCount = (display: DisplayConfig): number => {
+    return Array.isArray(display.fmt) ? display.fmt.length : 1;
+};
+
 const renderMultiLineText = (c: CanvasRenderingContext2D, x0: number, y0: number, w: number, h: number, text: string[], styles: TextStyles, conf: { sep?: number }) => {
     if (text.length === 0) {
         return;
@@ -198,15 +200,18 @@ const renderMultiLineText = (c: CanvasRenderingContext2D, x0: number, y0: number
     if (sep == null) {
         c.font = font[0];
         const mx = c.measureText("x");
-        sep = mx.actualBoundingBoxAscent - mx.actualBoundingBoxDescent;
+        sep = textMetricHeight(mx);
     }
     let ms: ReturnType<CanvasRenderingContext2D["measureText"]>[] = [];
+    let heights: number[] = [];
     let totalHeight = 0;
     for (let i = 0; i < text.length; i++) {
         c.font = font[i];
         const m = c.measureText(text[i]);
+        const height = textMetricHeight(m);
         ms.push(m);
-        totalHeight += m.actualBoundingBoxAscent - m.actualBoundingBoxDescent;
+        heights.push(height);
+        totalHeight += height;
     }
     totalHeight += (text.length - 1) * sep;
     let yBase = y0 + (h - totalHeight) / 2;
@@ -219,14 +224,13 @@ const renderMultiLineText = (c: CanvasRenderingContext2D, x0: number, y0: number
                 (ms[i].actualBoundingBoxRight -
                     ms[i].actualBoundingBoxLeft),
             ) /
-            2;
-        const textHeight =
-            ms[i].actualBoundingBoxAscent - ms[i].actualBoundingBoxDescent;
-        const y = yBase + textHeight;
+            2 -
+            ms[i].actualBoundingBoxLeft;
+        const y = yBase + ms[i].actualBoundingBoxAscent;
         c.font = font[i];
         c.fillStyle = color_fg[i] || "#fff";
-        c.fillText(text[i], x, y);
-        yBase += textHeight + sep;
+        c.fillText(text[i], Math.round(x), Math.round(y));
+        yBase += heights[i] + sep;
     }
     c.restore();
 };
@@ -329,7 +333,7 @@ const renderTextGauge = (c: CanvasRenderingContext2D, display: DisplayConfig, va
     c.fillStyle = bg;
     c.fillRect(0, 0, w, h);
 
-    const { text, values } = formatValues(display, values_, display.fmt ? (Array.isArray(display.fmt) ? display.fmt.length : 1) : 1);
+    const { text, values } = formatValues(display, values_, formatLineCount(display));
 
     // TODO: cache this
     const styles = getTextStyles({
@@ -351,7 +355,7 @@ const renderMeterGauge = (c: CanvasRenderingContext2D, display: DisplayConfig, v
     }
 
     // Apply display expressions before using the numeric value, so needle and text stay in sync.
-    const { text, values } = formatValues(display, values_);
+    const { text, values } = formatValues(display, values_, formatLineCount(display));
     const span = max - min;
     const rawValue = isNumber(values[0]) ? values[0] : min;
     let reading = (Math.min(Math.max(rawValue, min), max) - min) / span;
@@ -404,11 +408,26 @@ const renderMeterGauge = (c: CanvasRenderingContext2D, display: DisplayConfig, v
     c.stroke();
 
     // show the value text
-    const { font } = getTextStyles(display);
-    c.font = font[0];
-    c.fillStyle = fg;
-    const m = c.measureText(text[0]);
-    c.fillText(text[0], (w - m.width) / 2, h / 2 + 25);
+    const { font, color_fg } = getTextStyles(display, text.length, fg);
+    c.save();
+    c.textAlign = "center";
+    c.textBaseline = "alphabetic";
+    const textX = Math.round(w / 2);
+    const textY = text.length >= 3
+        ? [y0 - 18, y0 - 4, y0 + 24]
+        : text.length > 1
+            ? [y0 - 9, y0 + 24]
+            : [h / 2 + 25];
+    for (let i = 0; i < text.length; i++) {
+        const y = Math.round(textY[Math.min(i, textY.length - 1)]);
+        c.font = font[i];
+        c.lineWidth = 1;
+        c.strokeStyle = bg;
+        c.strokeText(text[i], textX, y);
+        c.fillStyle = color_fg[i] ?? fg;
+        c.fillText(text[i], textX, y);
+    }
+    c.restore();
 };
 
 const renderAttitudeIndicator = (c: CanvasRenderingContext2D, display: DisplayConfig, values: (number | null)[]): void => {
@@ -427,6 +446,7 @@ const renderAttitudeIndicator = (c: CanvasRenderingContext2D, display: DisplayCo
     const roll = isNumber(values[1]) ? values[1] : 0;
 
     const slip = numberOr(values[2], 0);
+    const turnRateDegSec = numberOr(values[7], 0);
     const navSource = isSourceIndex(values[3]) ? values[3] : 0;
     let src = isObject(display.navs) ? display.navs[navSource] : null;
     if (!isDeflectionNavConfig(src)) {
@@ -567,6 +587,39 @@ const renderAttitudeIndicator = (c: CanvasRenderingContext2D, display: DisplayCo
         c.stroke();
         c.fill();
     }
+
+    const standardTurnRate = 3;
+    const turnRateLimit = standardTurnRate * 1.5;
+    const turnRateHalfX = 9;
+    const turnRateStandardX = 18;
+    const turnRateLimitX = 27;
+    const turnRateHeight = 5;
+    const turnRateY = Math.round(h / 2 - 13);
+    const turnRateDirection = Math.sign(turnRateDegSec);
+    const turnRateX = Math.round(
+        Math.min(Math.abs(turnRateDegSec), turnRateLimit) / turnRateLimit * turnRateLimitX,
+    );
+
+    if (turnRateDirection != 0 && turnRateX > 0) {
+        c.fillStyle = "#ff33ff";
+        const x = turnRateDirection > 0 ? 0 : -turnRateX;
+        c.fillRect(x, turnRateY, turnRateX, turnRateHeight);
+    }
+
+    if (turnRateDirection != 0 && turnRateX >= turnRateHalfX - 2) {
+        c.strokeStyle = "white";
+        c.lineWidth = 1.5;
+        c.beginPath();
+        const halfTickX = turnRateHalfX * turnRateDirection;
+        c.moveTo(halfTickX, turnRateY - 1);
+        c.lineTo(halfTickX, turnRateY + turnRateHeight + 1);
+        if (turnRateX >= turnRateStandardX - 2) {
+            const standardTickX = turnRateStandardX * turnRateDirection;
+            c.moveTo(standardTickX, turnRateY - 1);
+            c.lineTo(standardTickX, turnRateY + turnRateHeight + 1);
+        }
+        c.stroke();
+    }
     c.restore();
 };
 
@@ -635,9 +688,9 @@ const renderMechanicalDisplay = (
     c.save();
     c.font = `${size}px '${defaultFont}'`;
     const m = c.measureText("x");
-    const y0 =
-        h / 2 + (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2;
-    let digitH = (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) * 2;
+    const digitTextHeight = textMetricHeight(m);
+    const y0 = h / 2 + textMetricCenterOffset(m);
+    let digitH = digitTextHeight * 2;
     let digitW = (m.actualBoundingBoxRight - m.actualBoundingBoxLeft) * 1.2;
     const sign = right ? -1 : 1;
     let x = (right ? w : 0) + sign * padding;
@@ -760,7 +813,6 @@ const renderHSI = (
     c: CanvasRenderingContext2D,
     display: DisplayConfig,
     values: (number | null)[],
-    onHsiSourceChange?: (command: string) => void,
 ): void => {
     const bg = "black";
     const fg = "white";
@@ -774,16 +826,14 @@ const renderHSI = (
     const x0 = w / 2;
     const y0 = h / 2;
     const r = w / 2 - 5;
-    const f1 = 0.8;
-    const f2 = 0.9;
+    const longTickR = 0.8 * r;
+    const shortTickR = 0.9 * r;
     const cdiR = 0.4 * r;
-    const vdefR = 3;
+    const vdefR = 2;
+    const hdefDotSpacing = 10;
+    const bearingPointerColor = "#35b8d8";
 
     const hdgRaw = values[0];
-    const hdgFailed = !isNumber(hdgRaw);
-    if (hdgFailed) {
-        display.pressed = false;
-    }
 
     c.save();
 
@@ -794,20 +844,13 @@ const renderHSI = (
     if (!isHsiNavConfig(src)) {
         src = null;
     }
-    if (display.pressed) {
-        display.pressed = false;
-        if (src) {
-            onHsiSourceChange?.(src.next.toString());
-        }
-    }
     const crs = src ? deg2Rad(numberOr(values[src.crs], 0)) : null;
     const fromto = src ? values[src.fromto] : null;
     const hdef = src ? readDeflectionState(src, values) : null;
     const def = Math.min(Math.max(isNumber(hdef?.def) ? hdef.def : 0, -3), 3);
     const polarXY = (theta: number, r: number) => {
-        const t = -theta - Math.PI / 2;
-        const dx = r * Math.cos(t);
-        const dy = -r * Math.sin(t);
+        const dx = r * Math.sin(theta);
+        const dy = -r * Math.cos(theta);
         return { dx, dy };
     };
     const pi2 = Math.PI * 2;
@@ -815,19 +858,71 @@ const renderHSI = (
     c.translate(x0, y0);
     c.rotate(-hdg);
     c.strokeStyle = fg;
-    c.lineWidth = 1;
+    c.lineWidth = 1.5;
     c.beginPath();
     for (let i = 0; i < 36; i++) {
-        const { dx, dy } = polarXY(deg2Rad(i * 10), r);
-        const f = (i & 1) == 0 ? f1 : f2;
+        const theta = deg2Rad(i * 10);
+        const { dx, dy } = polarXY(theta, r);
+        const tickR = i % 3 == 0 ? longTickR : shortTickR;
+        const tick = polarXY(theta, tickR);
         c.moveTo(dx, dy);
-        c.lineTo(dx * f, dy * f);
+        c.lineTo(tick.dx, tick.dy);
     }
+    c.stroke();
 
     c.fillStyle = fg;
-    c.font = `16px '${defaultFont}'`;
-    c.fillText("N", -5, -0.5 * r);
-    c.stroke();
+    c.textAlign = "center";
+    c.textBaseline = "middle";
+    for (let i = 0; i < 36; i += 3) {
+        const theta = deg2Rad(i * 10);
+        const { dx, dy } = polarXY(theta, r * 0.62);
+        const text = i == 0 ? "N" : i.toString().padStart(2, "0");
+        c.save();
+        c.translate(Math.round(dx), Math.round(dy));
+        c.rotate(theta - Math.PI / 2);
+        c.font = `${i == 0 ? 12 : 9}px '${defaultFont}'`;
+        c.fillText(text, 0, 0);
+        c.restore();
+    }
+
+    const drawBearingPointer = (relativeBearing: number, doubleLine: boolean): void => {
+        const theta = hdg + deg2Rad(relativeBearing);
+        const tip = polarXY(theta, r - 1);
+        const tail = polarXY(theta, -(r - 1));
+        const perp = { dx: Math.cos(theta), dy: Math.sin(theta) };
+        const offsets = doubleLine ? [-2.8, 2.8] : [0];
+
+        c.save();
+        c.strokeStyle = bearingPointerColor;
+        c.lineCap = "butt";
+        c.lineJoin = "miter";
+        c.lineWidth = 2;
+        c.beginPath();
+        for (let i = 0; i < offsets.length; i++) {
+            const offset = offsets[i];
+            c.moveTo(tail.dx + perp.dx * offset, tail.dy + perp.dy * offset);
+            c.lineTo(tip.dx + perp.dx * offset, tip.dy + perp.dy * offset);
+        }
+        const headBase = polarXY(theta, r - 10);
+        c.moveTo(tip.dx, tip.dy);
+        c.lineTo(headBase.dx - perp.dx * 6.5, headBase.dy - perp.dy * 6.5);
+        c.moveTo(tip.dx, tip.dy);
+        c.lineTo(headBase.dx + perp.dx * 6.5, headBase.dy + perp.dy * 6.5);
+        c.stroke();
+        c.restore();
+    };
+
+    const drawBearingPointerFromSource = (sourceIndex: number, doubleLine: boolean): void => {
+        const enabled = values[sourceIndex];
+        const bearing = values[sourceIndex + 1];
+        if (isNumber(enabled) && enabled != 0 && isNumber(bearing)) {
+            drawBearingPointer(bearing, doubleLine);
+        }
+    };
+
+    const bearingPointerIndex = 11; // Optional tail: BRG1 enabled/bearing, BRG2 enabled/bearing.
+    drawBearingPointerFromSource(bearingPointerIndex, false);
+    drawBearingPointerFromSource(bearingPointerIndex + 2, true);
 
     if (crs != null) {
         c.rotate(crs);
@@ -835,19 +930,20 @@ const renderHSI = (
         c.beginPath();
         for (let i = -2; i <= 2; i++) {
             const r = i == 0 ? 1 : vdefR;
-            const x = 13 * i;
+            const x = hdefDotSpacing * i;
             c.moveTo(x + r, 0);
             c.arc(x, 0, r, 0, pi2);
         }
-        c.stroke();
+        c.fillStyle = fg;
+        c.fill();
 
         c.beginPath();
-        c.lineWidth = 3;
+        c.lineWidth = 2.5;
         c.strokeStyle = src?.color ? src.color : "magenta";
 
         if (isNumber(hdef?.displayActive) && hdef.displayActive != 0) {
             // draw CDI needle
-            const cdiX = 13 * def;
+            const cdiX = hdefDotSpacing * def;
             c.moveTo(cdiX, -(cdiR - 1));
             c.lineTo(cdiX, cdiR - 1);
         }
@@ -856,7 +952,7 @@ const renderHSI = (
         c.lineTo(0, -(cdiR + 1));
 
         // crs arrowhead
-        let y0 = -f1 * r;
+        let y0 = -longTickR;
         let y1 = 0.8 * y0;
         c.moveTo(0, y0);
         c.lineTo(-5, y1);
@@ -880,29 +976,27 @@ const renderHSI = (
             c.lineTo(0, y0);
         }
 
+        c.stroke();
         c.rotate(-crs);
     }
 
     if (hdgB != null) {
         const bugW = 4;
-        const bugY1 = -(r - 5);
-        const bugY0 = -(r - 8);
-        c.stroke();
+        const bugOuterY = -(r + 1);
+        const bugInnerY = -(r - 8);
         c.rotate(hdgB);
-        c.lineWidth = 1;
-        c.strokeStyle = "white";
-        c.fillStyle = "cyan";
+        c.lineWidth = 3;
+        c.strokeStyle = "cyan";
+        c.lineCap = "butt";
+        c.lineJoin = "miter";
         c.beginPath();
-        c.moveTo(0, bugY1);
-        c.lineTo(-bugW, -(r + 1));
-        c.lineTo(-bugW, bugY0);
-        c.lineTo(bugW, bugY0);
-        c.lineTo(bugW, -(r + 1));
-        c.lineTo(0, bugY1);
-        c.fill();
+        c.moveTo(-bugW, bugOuterY);
+        c.lineTo(-bugW, bugInnerY);
+        c.lineTo(bugW, bugInnerY);
+        c.lineTo(bugW, bugOuterY);
+        c.stroke();
     }
 
-    c.stroke();
     c.restore();
 
     c.save();
@@ -926,41 +1020,41 @@ const renderBarGauge = (c: CanvasRenderingContext2D, display: DisplayConfig, val
     c.fillStyle = bg;
     c.fillRect(0, 0, w, h);
 
-    const slotWidth = 10;
-    const slotHeight = 60;
-    const barWidth = slotWidth * 0.6;
-
-    const { text, values } = formatValues(display, values_, display.fmt ? (Array.isArray(display.fmt) ? display.fmt.length : 1) : 1);
+    const { text, values } = formatValues(display, values_, formatLineCount(display));
     const label = getLabels(display);
-    // TODO: cache this
     const { font, color_fg } = getTextStyles({
         size: display.size,
         color_fg: formatTextColors(display, values, text.length),
     }, text.length);
 
     c.save();
-    c.rotate(Math.PI / 2);
-
-    let y = -(w - (slotWidth + 10) * text.length) / 2;
-    let x = (h - slotHeight) / 2;
+    const rowHeight = 22;
+    const barX = 8;
+    const barWidth = w - barX * 2;
+    const barHeight = 6;
+    const y0 = (h - rowHeight * text.length) / 2;
     c.strokeStyle = fg;
+    c.textAlign = "left";
+    c.textBaseline = "alphabetic";
     for (let i = 0; i < text.length; i++) {
-        c.lineWidth = 1;
-        c.strokeRect(x, y - barWidth, slotHeight, barWidth);
+        const y = y0 + rowHeight * i;
         const r = Math.max(Math.min(numberOr(values[i], 0), 1), 0);
+
+        c.font = font[i];
+        c.fillStyle = fg;
+        c.fillText(`${label[i] ?? ""} ${text[i]}`, barX, y + 9);
+
+        c.lineWidth = 1;
+        c.strokeRect(barX, y + 12, barWidth, barHeight);
         c.fillStyle = color_fg[i] || fg;
-        const xx = x + slotHeight * (1 - r);
-        c.fillRect(xx + 1, y - barWidth + 1, slotHeight * r - 1, barWidth - 1);
+        c.fillRect(barX + 1, y + 13, Math.max(0, barWidth * r - 1), barHeight - 1);
+
+        const markerX = barX + barWidth * r;
         c.lineWidth = 2;
         c.beginPath();
-        c.moveTo(xx + 1, y + 2);
-        c.lineTo(xx + 1, y - barWidth - 2);
+        c.moveTo(markerX, y + 10);
+        c.lineTo(markerX, y + 20);
         c.stroke();
-        c.fillStyle = fg;
-        c.font = font[i];
-        const t = `${label[i]} ${text[i]}`;
-        c.fillText(t, x, y - slotWidth + 2);
-        y -= slotWidth + 10;
     }
     c.restore();
 };
@@ -971,12 +1065,7 @@ export type GaugeRenderer = (
     values: (number | null)[],
 ) => void;
 
-interface GaugeRendererOptions {
-    onHsiSourceChange?: (command: string) => void;
-}
-
-export const getGaugeRenderers = (options: GaugeRendererOptions = {}): Record<string, GaugeRenderer> => {
-    const { onHsiSourceChange } = options;
+export const getGaugeRenderers = (): Record<string, GaugeRenderer> => {
     return {
         meter: renderMeterGauge,
         text: renderTextGauge,
@@ -984,6 +1073,6 @@ export const getGaugeRenderers = (options: GaugeRendererOptions = {}): Record<st
         attitude: renderAttitudeIndicator,
         ias: renderIAS,
         alt: renderAltimeter,
-        hsi: (c, display, values) => renderHSI(c, display, values, onHsiSourceChange),
+        hsi: renderHSI,
     };
 };

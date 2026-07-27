@@ -7,7 +7,15 @@ import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
 import yargs from "yargs/yargs";
 import { Arguments } from "yargs";
-import type { ActionSpec, DisplayConfig, KeyConfig, KnobConfig, PageConfig } from "./config.js";
+import {
+    isHsiNavConfig,
+    isSourceIndex,
+    type ActionSpec,
+    type DisplayConfig,
+    type KeyConfig,
+    type KnobConfig,
+    type PageConfig,
+} from "./config.js";
 import {
     defaultFont,
     getGaugeRenderers,
@@ -499,11 +507,6 @@ const drawKey = async (id: number, conf: KeyConfig | null, pressed: boolean): Pr
         pressedKey = null;
     }
 
-    const display = getDisplayConfig(conf);
-    if (display) {
-        // not an input, but a display gauge
-        display.pressed = pressed;
-    }
     markCenterActivity(true);
 };
 
@@ -515,29 +518,17 @@ const drawSideKnobs = async (side: "left" | "right", confs: KnobConfig[] | undef
     });
 };
 
-const gaugeRenderers = getGaugeRenderers({
-    onHsiSourceChange: (command: string) => {
-        void xplane.sendCommand(command);
-    },
-});
+const gaugeRenderers = getGaugeRenderers();
 
 const loadPage = async (page: PageConfig): Promise<void> => {
     // page is not null
-    const { left, right, keys } = page;
+    const { left, right } = page;
     pressedKey = null;
     resetActiveTouchState();
 
     const pms: Promise<void>[] = [];
     pms.push(drawSideKnobs("left", left));
     pms.push(drawSideKnobs("right", right));
-
-    for (let i = 0; i < KEY_COUNT; i++) {
-        const conf = Array.isArray(keys) && keys.length > i ? keys[i] : null;
-        const display = getDisplayConfig(conf);
-        if (display) {
-            display.pressed = false;
-        }
-    }
 
     await Promise.all(pms);
     markCenterActivity(true);
@@ -592,7 +583,6 @@ const initializePages = async (): Promise<void> => {
                     aeroCrossed: isDisplayAeroCrossed(display, values),
                 };
                 displayStates.set(conf, state);
-                display.pressed = false;
 
                 for (let k = 0; k < display.source.length; k++) {
                     const source = display.source[k];
@@ -750,6 +740,24 @@ const takeAction = (labeled: ActionOwner | undefined, type: ActionType, haptics:
     }
     if (haptics) {
         device!.vibrate(HAPTIC.REV_FASTEST);
+    }
+};
+
+const takeDisplayAction = (key: KeyConfig): void => {
+    const display = getDisplayConfig(key);
+    if (display?.type !== "hsi") {
+        return;
+    }
+    const state = displayStates.get(key);
+    if (!state || state.aeroCrossed) {
+        return;
+    }
+    const navSource = isSourceIndex(state.values[2]) ? state.values[2] : null;
+    const src = isObject(display.navs) && navSource != null
+        ? display.navs[navSource.toString()]
+        : null;
+    if (isHsiNavConfig(src)) {
+        void xplane.sendCommand(src.next);
     }
 };
 
@@ -938,6 +946,7 @@ const updateActiveTouchKey = async (touch: TouchEvent, triggerAction: boolean): 
         await drawKey(nextKey, key, true);
         if (triggerAction) {
             takeAction(key, "pressed", true);
+            takeDisplayAction(key);
         }
     }
 };

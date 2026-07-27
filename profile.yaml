@@ -14,7 +14,7 @@
       pressed:
         xplane_cmd: lfd/throttle_full
     - label: Prop
-      color_bg: '#0000ff'
+      color_bg: "#0000ff"
       inc:
         xplane_cmd: sim/engines/prop_up
       dec:
@@ -28,7 +28,7 @@
         xplane_cmd: sim/engines/mixture_down
       pressed:
         xplane_cmd: sim/engines/mixture_max
-      color_bg: '#ff0000'
+      color_bg: "#ff0000"
   right:
     # right knob labels
     - label: HDG
@@ -60,12 +60,10 @@
         # polling rate for X-Plane UDP datarefs (render FPS is configured in app.ts)
         freq: 6
         source:
-          - xplane_dataref: sim/cockpit2/engine/actuators/throttle_ratio[0]
           - xplane_dataref: sim/cockpit2/engine/actuators/prop_ratio[0]
           - xplane_dataref: sim/cockpit2/engine/actuators/mixture_ratio[0]
           - xplane_dataref: sim/flightmodel/controls/flaprat
         label:
-          - T
           - P
           - M
           - F
@@ -74,12 +72,10 @@
           - 12
           - 12
           - 12
-          - 12
         exp:
-          - '$d'
-          - '$d != null ? 1 - $d : null'
-          - '$d'
-          - '$d'
+          - "$d != null ? 1 - $d : null"
+          - "$d"
+          - "$d"
 
         # value expression written in a JS template literal (https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Template_literals)
         # for each bar, should result in [0, 1]. Note $d is the array that
@@ -88,10 +84,8 @@
           - '${$d[0] != null ? ($d[0] * 100).toFixed(0) : "X"}%'
           - '${$d[1] != null ? ($d[1] * 100).toFixed(0) : "X"}%'
           - '${$d[2] != null ? ($d[2] * 100).toFixed(0) : "X"}%'
-          - '${$d[3] != null ? ($d[3] * 100).toFixed(0) : "X"}%'
         # bar colors
         color_fg:
-          - white
           - blue
           - red
           - gray
@@ -100,38 +94,60 @@
         type: meter
         freq: 24
         source:
+          - xplane_dataref: sim/cockpit2/engine/indicators/power_watts[0]
           - xplane_dataref: sim/cockpit2/engine/indicators/MPR_in_hg[0]
-        # tame tiny float jitter from the raw dataref
         exp:
-          - '$d != null ? Math.round($d * 5) / 5 : null'
-        min: 10
-        max: 30
-        fmt: '${$d[0] != null ? $d[0].toFixed(1) : "X"}'
+          # DA40 NG max take-off power is 123.5 kW; show engine load in percent.
+          - "$d != null ? Math.round(($d / 123500) * 1000) / 10 : null"
+          - "$d != null ? Math.round($d * 5) / 5 : null"
+        min: 0
+        max: 100
+        fmt:
+          - '${$d[0] != null ? $d[0].toFixed(0) : "X"}'
+          - PWR%
+          - '${$d[1] != null ? $d[1].toFixed(1) : ""}'
+        size:
+          - 15
+          - 13
+          - 18
         # stops define the segmented arcs that the needle can point to at different angles
         stops:
-          - color: 'green'
-            value_begin: 13
-            value_end: 30
+          - color: "green"
+            value_begin: 0
+            value_end: 92
+          - color: "yellow"
+            value_begin: 92
+            value_end: 100
     - display:
         type: meter
         freq: 24
         source:
-          - xplane_dataref: sim/cockpit2/engine/indicators/engine_speed_rpm[0]
-        # keep the needle from dancing on very small RPM changes at high polling rates
+          - xplane_dataref: sim/cockpit2/engine/indicators/prop_speed_rpm[0]
+          - xplane_dataref: sim/cockpit2/engine/indicators/prop_speed_rpm[0]
         exp:
-          - '$d != null ? Math.round($d / 10) * 10 : null'
+          # DA40 NG RPM percent is relative to 2300 RPM maximum take-off RPM.
+          - "$d != null ? Math.round(($d / 2300) * 1000) / 10 : null"
+          - "$d != null ? Math.round($d / 10) * 10 : null"
         min: 0
-        max: 3000
+        max: 108.7
+        fmt:
+          - '${$d[0] != null ? $d[0].toFixed(0) : "X"}'
+          - RPM%
+          - '${$d[1] != null ? $d[1].toFixed(0) : ""}'
+        size:
+          - 15
+          - 13
+          - 18
         stops:
-          - color: 'green'
-            value_begin: 500
-            value_end: 2400
-          - color: 'yellow'
-            value_begin: 2400
-            value_end: 2700
-          - color: 'red'
-            value_begin: 2700
-            value_end: 3000
+          - color: "green"
+            value_begin: 0
+            value_end: 91.3
+          - color: "yellow"
+            value_begin: 91.3
+            value_end: 100
+          - color: "red"
+            value_begin: 100
+            value_end: 108.7
     - label:
         - Flaps
         - Up
@@ -155,6 +171,8 @@
           - xplane_dataref: sim/cockpit2/radios/indicators/hsi_display_vertical_pilot
           # 0 means valid GS/GP signal, non-zero means flag/no valid signal
           - xplane_dataref: sim/cockpit2/radios/indicators/hsi_flag_glideslope_pilot
+          # actual yaw rate for the bottom magenta turn-rate segments
+          - xplane_dataref: sim/flightmodel/position/R
         # navs contains the mapping from the HSI source value (source[3]) to the index in source[] array
         navs:
           2:
@@ -213,21 +231,21 @@
             fromto: 6
             def: 3
             display: 4
-            color: magenta
+            color: "#ff66ff"
             next: sim/autopilot/hsi_select_nav_1
           0:
             crs: 7
             fromto: 8
             def: 3
             display: 4
-            color: '#2dfe54'
+            color: "#2dfe54"
             next: sim/autopilot/hsi_select_nav_2
           1:
             crs: 9
             fromto: 10
             def: 3
             display: 4
-            color: '#2dfe54'
+            color: "#2dfe54"
             next: sim/autopilot/hsi_select_gps
       pressed: {}
     - display:
@@ -247,7 +265,7 @@
         color_fg:
           - white
           - cyan
-          - '${($d[2] == 2 ? "magenta" : ($d[2] == 0 ? "#2dfe54" : ($d[2] == 1 ? "#2dfe54" : "magenta")))}'
+          - '${($d[2] == 2 ? "#ff66ff" : ($d[2] == 0 ? "#2dfe54" : ($d[2] == 1 ? "#2dfe54" : "#ff66ff")))}'
         size:
           - null
           - 16
@@ -269,7 +287,7 @@
         xplane_cmd: lfd/throttle_full
     - label: Prop
       color_fg: white
-      color_bg: '#0000ff'
+      color_bg: "#0000ff"
       inc:
         xplane_cmd: sim/engines/prop_up
       dec:
@@ -284,7 +302,7 @@
         xplane_cmd: sim/engines/mixture_down
       pressed:
         xplane_cmd: sim/engines/mixture_max
-      color_bg: '#ff0000'
+      color_bg: "#ff0000"
   right:
     - label: HDG
       inc:
@@ -342,7 +360,7 @@
     - label: DN
       pressed:
         xplane_cmd: sim/GPS/g1000n1_nose_down
-  color: '#1a62fd'
+  color: "#1a62fd"
 
 # Page 2
 - left:
@@ -418,17 +436,10 @@
     - label: ENT
       pressed:
         xplane_cmd: sim/GPS/g1000n3_ent
-  color: 'yellow'
+  color: "yellow"
 
 # Page 3
 - left:
-    - label: COM in
-      inc:
-        xplane_cmd: sim/GPS/g1000n1_com_inner_up
-      dec:
-        xplane_cmd: sim/GPS/g1000n1_com_inner_down
-      pressed:
-        xplane_cmd: sim/GPS/g1000n1_com12
     - label: COM out
       inc:
         xplane_cmd: sim/GPS/g1000n1_com_outer_up
@@ -436,20 +447,27 @@
         xplane_cmd: sim/GPS/g1000n1_com_outer_down
       pressed:
         xplane_cmd: sim/GPS/g1000n1_com12
+    - label: COM in
+      inc:
+        xplane_cmd: sim/GPS/g1000n1_com_inner_up
+      dec:
+        xplane_cmd: sim/GPS/g1000n1_com_inner_down
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_com12
     -
   right:
-    - label: NAV in
-      inc:
-        xplane_cmd: sim/GPS/g1000n1_nav_inner_up
-      dec:
-        xplane_cmd: sim/GPS/g1000n1_nav_inner_down
-      pressed:
-        xplane_cmd: sim/GPS/g1000n1_nav12
     - label: NAV out
       inc:
         xplane_cmd: sim/GPS/g1000n1_nav_outer_up
       dec:
         xplane_cmd: sim/GPS/g1000n1_nav_outer_down
+      pressed:
+        xplane_cmd: sim/GPS/g1000n1_nav12
+    - label: NAV in
+      inc:
+        xplane_cmd: sim/GPS/g1000n1_nav_inner_up
+      dec:
+        xplane_cmd: sim/GPS/g1000n1_nav_inner_down
       pressed:
         xplane_cmd: sim/GPS/g1000n1_nav12
     -
@@ -459,15 +477,13 @@
         - <->
       pressed:
         xplane_cmd: sim/GPS/g1000n1_com_ff
+    -
+    -
     - label:
         - NAV
         - <->
       pressed:
         xplane_cmd: sim/GPS/g1000n1_nav_ff
-    - label: IMC
-      pressed:
-        xplane_cmd: lfd/toggle_imc_foggles
-    -
     - label:
         - COM1
         - Mic
@@ -487,5 +503,7 @@
       pressed:
         xplane_cmd: sim/audio_panel/monitor_audio_com2
     -
-    -
-  color: 'white'
+    - label: IMC
+      pressed:
+        xplane_cmd: lfd/toggle_imc_foggles
+  color: "white"
